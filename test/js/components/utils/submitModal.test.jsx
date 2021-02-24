@@ -2,12 +2,12 @@ import { fireEvent } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import { SubmitModal } from '@/components/utils';
-import { createObject } from '@/store/actions';
+import { SubmitModal } from '~js/components/utils';
+import { createObject } from '~js/store/actions';
 
 import { renderWithRedux, storeWithThunk } from './../../utils';
 
-jest.mock('@/store/actions');
+jest.mock('~js/store/actions');
 
 createObject.mockReturnValue(() =>
   Promise.resolve({ type: 'TEST', payload: {} }),
@@ -69,12 +69,14 @@ describe('<SubmitModal/>', () => {
   });
 
   describe('form submit', () => {
-    test('creates a new task pr', () => {
-      const { getByText } = setup();
+    test('creates a new task pr', async () => {
+      const { findByText, getByText } = setup();
       const submit = getByText('Submit Task for Testing');
       fireEvent.click(submit);
 
-      expect(getByText('Submitting Task for Testing…')).toBeVisible();
+      expect.assertions(2);
+      await findByText('Submitting Task for Testing…');
+
       expect(createObject).toHaveBeenCalledTimes(1);
       expect(createObject).toHaveBeenCalledWith({
         objectType: 'task_pr',

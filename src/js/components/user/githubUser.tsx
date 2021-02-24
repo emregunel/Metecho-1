@@ -12,11 +12,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Trans } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
-import { EmptyIllustration } from '@/components/404';
-import { LabelWithSpinner, SpinnerWrapper } from '@/components/utils';
-import { GitHubUser, User } from '@/store/user/reducer';
-import { selectUserState } from '@/store/user/selectors';
-import { ORG_TYPES, OrgTypes } from '@/utils/constants';
+import { EmptyIllustration } from '~js/components/404';
+import { LabelWithSpinner, SpinnerWrapper } from '~js/components/utils';
+import { GitHubUser, User } from '~js/store/user/reducer';
+import { selectUserState } from '~js/store/user/selectors';
+import { ORG_TYPES, OrgTypes } from '~js/utils/constants';
 
 interface TableCellProps {
   [key: string]: any;
@@ -32,10 +32,44 @@ export const GitHubUserAvatar = ({
   size?: string;
 }) => (
   <Avatar
-    imgAlt={`${i18n.t('avatar for user')} ${user.login}`}
+    imgAlt={i18n.t('avatar for user {{username}}', { username: user.login })}
     imgSrc={user.avatar_url}
     title={user.login}
     size={size || 'small'}
+  />
+);
+
+const GitHubUserButton = ({
+  user,
+  isAssigned,
+  isSelected,
+  ...props
+}: {
+  user: GitHubUser;
+  isAssigned?: boolean;
+  isSelected?: boolean;
+  [key: string]: any;
+}) => (
+  <Button
+    className={classNames(
+      'slds-size_full',
+      'slds-p-around_xx-small',
+      'collaborator-button',
+      {
+        'is-assigned': isAssigned,
+        'is-selected': isSelected,
+      },
+    )}
+    title={user.login}
+    label={
+      <>
+        <GitHubUserAvatar user={user} />
+        <span className="collaborator-username">{user.login}</span>
+      </>
+    }
+    variant="base"
+    disabled={isSelected || isAssigned}
+    {...props}
   />
 );
 
@@ -202,10 +236,10 @@ export const AssignUsersModal = ({
       >
         <div className="slds-grid slds-wrap slds-shrink slds-p-right_medium">
           <p>
-            <Trans i18nKey="projectCollaborators">
-              Only users who have access to the GitHub repository for this
-              project will appear in the list below. Visit GitHub to invite
-              additional collaborators to this repository.
+            <Trans i18nKey="epicCollaborators">
+              Only users who have access to the GitHub repository for this epic
+              will appear in the list below. Visit GitHub to invite additional
+              collaborators.
             </Trans>
           </p>
         </div>
@@ -259,9 +293,8 @@ export const AssignUsersModal = ({
               message={
                 <Trans i18nKey="noGitHubUsers">
                   We couldn’t find any GitHub users who have access to this
-                  repository. Try re-syncing the list of available
-                  collaborators, or contact an admin for this repository on
-                  GitHub.
+                  project. Try re-syncing the list of available collaborators,
+                  or contact an admin for this project on GitHub.
                 </Trans>
               }
             />
@@ -272,40 +305,6 @@ export const AssignUsersModal = ({
     </Modal>
   );
 };
-
-const GitHubUserButton = ({
-  user,
-  isAssigned,
-  isSelected,
-  ...props
-}: {
-  user: GitHubUser;
-  isAssigned?: boolean;
-  isSelected?: boolean;
-  [key: string]: any;
-}) => (
-  <Button
-    className={classNames(
-      'slds-size_full',
-      'slds-p-around_xx-small',
-      'collaborator-button',
-      {
-        'is-assigned': isAssigned,
-        'is-selected': isSelected,
-      },
-    )}
-    title={user.login}
-    label={
-      <>
-        <GitHubUserAvatar user={user} />
-        <span className="collaborator-username">{user.login}</span>
-      </>
-    }
-    variant="base"
-    disabled={isSelected || isAssigned}
-    {...props}
-  />
-);
 
 export const AssignUserModal = ({
   allUsers,
@@ -377,9 +376,9 @@ export const AssignUserModal = ({
       tagline={
         filteredUsers.length ? (
           <>
-            {i18n.t('Only project collaborators appear in the list below.')}{' '}
+            {i18n.t('Only epic collaborators appear in the list below.')}{' '}
             <Button
-              label={i18n.t('View the project to add collaborators.')}
+              label={i18n.t('View the epic to add collaborators.')}
               variant="link"
               onClick={emptyMessageAction}
             />
@@ -449,7 +448,7 @@ export const AssignUserModal = ({
       ) : (
         <div className="slds-p-around_medium">
           {i18n.t(
-            'There are no collaborators on this project. Add collaborators to the project before assigning them to this task.',
+            'There are no collaborators on this epic. Add collaborators to the epic before assigning them to this task.',
           )}
         </div>
       )}

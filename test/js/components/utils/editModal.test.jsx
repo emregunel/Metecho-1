@@ -1,12 +1,16 @@
 import { fireEvent } from '@testing-library/react';
 import React from 'react';
 
-import { EditModal } from '@/components/utils';
-import { updateObject } from '@/store/actions';
+import { EditModal } from '~js/components/utils';
+import { updateObject } from '~js/store/actions';
 
-import { renderWithRedux, storeWithThunk } from './../../utils';
+import {
+  renderWithRedux,
+  reRenderWithRedux,
+  storeWithThunk,
+} from './../../utils';
 
-jest.mock('@/store/actions');
+jest.mock('~js/store/actions');
 
 updateObject.mockReturnValue(() =>
   Promise.resolve({ type: 'TEST', payload: {} }),
@@ -16,48 +20,46 @@ afterEach(() => {
   updateObject.mockClear();
 });
 
-const defaultProject = {
-  id: 'project-id',
-  name: 'Project Name',
-  description: 'Description of the project',
+const defaultEpic = {
+  id: 'epic-id',
+  name: 'Epic Name',
+  description: 'Description of the epic',
 };
 
 describe('<EditModal />', () => {
   const setup = (options = {}) => {
     const defaults = {
-      model: defaultProject,
-      modelType: 'project',
+      model: defaultEpic,
+      modelType: 'epic',
     };
     const opts = Object.assign({}, defaults, options);
     const closeEditModal = jest.fn();
-    return renderWithRedux(
-      <EditModal {...opts} isOpen handleClose={closeEditModal} />,
-      {},
-      storeWithThunk,
-      opts.rerender,
-      opts.store,
-    );
+    const ui = <EditModal {...opts} isOpen handleClose={closeEditModal} />;
+    if (opts.rerender) {
+      return reRenderWithRedux(ui, opts.store, opts.rerender);
+    }
+    return renderWithRedux(ui, {}, storeWithThunk);
   };
 
   test('updates default fields on input', () => {
     const { store, rerender, getByLabelText } = setup();
-    const nameInput = getByLabelText('*Project Name');
+    const nameInput = getByLabelText('*Epic Name');
     const descriptionInput = getByLabelText('Description');
     setup({
       model: {
-        ...defaultProject,
-        name: 'New Project Name',
+        ...defaultEpic,
+        name: 'New Epic Name',
       },
       rerender,
       store,
     });
 
-    expect(nameInput.value).toEqual('New Project Name');
+    expect(nameInput.value).toEqual('New Epic Name');
 
     setup({
       model: {
-        ...defaultProject,
-        name: 'New Project Name',
+        ...defaultEpic,
+        name: 'New Epic Name',
         description: 'New description',
       },
       rerender,
@@ -67,25 +69,28 @@ describe('<EditModal />', () => {
     expect(descriptionInput.value).toEqual('New description');
   });
 
-  test('submit clicked', () => {
-    const { getByText, getByLabelText } = setup();
-    const nameInput = getByLabelText('*Project Name');
+  test('submit clicked', async () => {
+    const { findByText, getByText, getByLabelText } = setup();
+    const nameInput = getByLabelText('*Epic Name');
     const descriptionInput = getByLabelText('Description');
     const submit = getByText('Save');
 
-    fireEvent.change(nameInput, { target: { value: 'New Project Name' } });
+    fireEvent.change(nameInput, { target: { value: 'New Epic Name' } });
     fireEvent.change(descriptionInput, {
       target: { value: 'New description' },
     });
     fireEvent.click(submit);
 
+    expect.assertions(2);
+    await findByText('Saving…');
+
     expect(updateObject).toHaveBeenCalledTimes(1);
     expect(updateObject).toHaveBeenCalledWith({
-      objectType: 'project',
+      objectType: 'epic',
       data: {
-        name: 'New Project Name',
+        name: 'New Epic Name',
         description: 'New description',
-        id: 'project-id',
+        id: 'epic-id',
       },
       hasForm: true,
     });

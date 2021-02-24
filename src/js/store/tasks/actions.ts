@@ -1,9 +1,9 @@
 import i18n from 'i18next';
 
-import { ThunkResult } from '@/store';
-import { isCurrentUser } from '@/store/helpers';
-import { Task } from '@/store/tasks/reducer';
-import { addToast } from '@/store/toasts/actions';
+import { ThunkResult } from '~js/store';
+import { isCurrentUser } from '~js/store/helpers';
+import { Task } from '~js/store/tasks/reducer';
+import { addToast } from '~js/store/toasts/actions';
 
 interface TaskUpdated {
   type: 'TASK_UPDATE';
@@ -31,9 +31,10 @@ export const createTaskPR = ({
   if (isCurrentUser(originating_user_id, getState())) {
     dispatch(
       addToast({
-        heading: `${i18n.t('Successfully submitted task for testing:')} “${
-          model.name
-        }”.`,
+        heading: i18n.t(
+          'Successfully submitted task for testing: “{{task_name}}”.',
+          { task_name: model.name },
+        ),
         linkText: model.pr_url ? i18n.t('View pull request.') : undefined,
         linkUrl: model.pr_url ? model.pr_url : undefined,
         openLinkInNewWindow: true,
@@ -56,9 +57,10 @@ export const createTaskPRFailed = ({
   if (isCurrentUser(originating_user_id, getState())) {
     dispatch(
       addToast({
-        heading: `${i18n.t(
-          'Uh oh. There was an error submitting task for testing',
-        )}: “${model.name}”.`,
+        heading: i18n.t(
+          'Uh oh. There was an error submitting task for testing: “{{task_name}}”.',
+          { task_name: model.name },
+        ),
         details: message,
         variant: 'error',
       }),
@@ -81,9 +83,10 @@ export const submitReview = ({
   if (isCurrentUser(originating_user_id, getState())) {
     dispatch(
       addToast({
-        heading: `${i18n.t('Successfully submitted review for task:')} “${
-          model.name
-        }”.`,
+        heading: i18n.t(
+          'Successfully submitted review for task: “{{task_name}}”.',
+          { task_name: model.name },
+        ),
         linkText: model.pr_url ? i18n.t('View pull request.') : undefined,
         linkUrl: model.pr_url ? model.pr_url : undefined,
         openLinkInNewWindow: true,
@@ -106,9 +109,10 @@ export const submitReviewFailed = ({
   if (isCurrentUser(originating_user_id, getState())) {
     dispatch(
       addToast({
-        heading: `${i18n.t(
-          'Uh oh. There was an error submitting review for task',
-        )}: “${model.name}”.`,
+        heading: i18n.t(
+          'Uh oh. There was an error submitting review for task: “{{task_name}}”.',
+          { task_name: model.name },
+        ),
         details: message,
         variant: 'error',
       }),

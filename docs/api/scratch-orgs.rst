@@ -18,14 +18,18 @@ Retrieve
     [
       {
         "id": "n1057Rw",
+        "project": null,
+        "epic": null",
         "task": "M13MnQO",
+        "description": "This is *safely* rendered Markdown.",
+        "description_rendered": "<p>This is <em>safely</em> rendered Markdown.</p>",
         "org_type": "Dev",
         "owner": "3Lw7OwK",
         "last_modified_at": "2019-01-01T17:22:50Z",
         "expires_at": "2019-01-08T17:21:37Z",
         "last_checked_unsaved_changes_at": "2019-01-03T17:21:37Z",
         "latest_commit": "617a512",
-        "latest_commit_url": "https://github.com/SFDO-Tooling/test-repository/commit/617a512",
+        "latest_commit_url": "https://github.com/SFDO-Tooling/test-project/commit/617a512",
         "latest_commit_at": "2019-02-01T19:47:49Z",
         "url": "https://sample-org-url.my.salesforce.com/",
         "unsaved_changes": {},
@@ -44,7 +48,8 @@ Retrieve
         "has_been_visited": true,
         "valid_target_directories": {
           "source": ["src"]
-        }
+        },
+        "org_config_name": "dev"
       }
       ...
     ]

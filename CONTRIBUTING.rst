@@ -43,19 +43,19 @@ Docker-based development
    can find these values in the shared Keybase team folder --
    ``metecho/env``)::
 
-    SF_CLIENT_KEY=...
-    SF_CLIENT_ID=...
-    SF_CLIENT_SECRET=...
+    DOCKER_SFDX_HUB_KEY=...
+    SFDX_CLIENT_ID=...
+    SFDX_CLIENT_SECRET=...
     GITHUB_HOOK_SECRET=...
     GITHUB_CLIENT_ID=...
     GITHUB_CLIENT_SECRET=...
     GITHUB_APP_ID=...
-    GITHUB_APP_KEY=...
+    DOCKER_GITHUB_APP_KEY=...
 
-   Note that none of the values should be quoted, and while ``SF_CLIENT_KEY``
-   and ``GITHUB_APP_KEY`` are RSA private keys, they must have newlines replaced
-   with ``\n`` in order to work properly with the Docker ``env_file``
-   configuration option (see `this issue`_).
+   Note that none of the values should be quoted, and while
+   ``DOCKER_SFDX_HUB_KEY`` and ``DOCKER_GITHUB_APP_KEY`` are RSA private keys,
+   they must have newlines replaced with ``\n`` in order to work properly with
+   the Docker ``env_file`` configuration option (see `this issue`_).
 
 3. Run ``./derrick build`` to build/re-build all the container images.
 
@@ -109,8 +109,9 @@ variable in Metecho.
 Use the app's "App ID" as ``GITHUB_APP_ID``, "Client ID" as
 ``GITHUB_CLIENT_ID``, and "Client secret" as ``GITHUB_CLIENT_SECRET``.
 
-Finally, generate a new private key for the app, and set it as the
-``GITHUB_APP_KEY`` environment variable (the entire key, not a path to one).
+Finally, generate a new private key for the app, replace newlines with ``\n``,
+and set it as the ``DOCKER_GITHUB_APP_KEY`` environment variable (the entire
+key, not a path to one).
 
 Logging in as a superuser
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -186,6 +187,7 @@ will see you can run e.g.::
     $ ./derrick messages <locale>  # build messages for i18n
     $ ./derrick shell  # open Python shell
     $ ./derrick prune  # clean up unused Docker images and containers
+    $ ./derrick storybook  # build storybook and run dev server
 
 To run any development tasks (such as changing Python or JS dependencies, or
 generating or running migrations, or running a Django shell), you will need to
@@ -281,3 +283,15 @@ exposed to the front end, to properly generate translation files. See error
 message handling in ``metecho/api/sf_run_flow.py`` for an example.
 
 .. _user language is auto-detected at runtime: https://github.com/i18next/i18next-browser-languageDetector
+
+Storybook Development Workflow
+------------------------------
+
+When doing development for the component library in Storybook,
+use one of these two commands::
+
+    $ ./derrick storybook  # if running outside of container
+    $ yarn storybook  # if working in a remote container in VS Code
+
+After running one of these commands, you can view the Storybook at
+`<http://localhost:6006/>`_ in your browser.

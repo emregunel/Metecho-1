@@ -2,7 +2,7 @@ import { render } from '@testing-library/react';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
 
-import DashboardDetail from '@/components/dashboard/detail';
+import DashboardDetail from '~js/components/dashboard/detail';
 
 describe('<DashboardDetail/>', () => {
   const context = {};

@@ -18,23 +18,28 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.local
       DATABASE_URL: postgres://metecho:sample_db_password@postgres:5432/metecho
       REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
     volumes:
       - .:/app:cached
       - /app/node_modules
     ports:
       - '8080:8080'
       - '8000:8000'
+      # Storybook server
+      - '6006:6006'
       # Open this port to attach to remote debuggers in the Python process,
       # if need-be:
       - '33284:33284' # Spells "DEBUG" in phone-number
     stdin_open: true
     tty: true
     # Wait for Postgres DB to be ready before running server
-    command: bash -c 'while !</dev/tcp/postgres/5432; do sleep 1; done; /start-server.sh'
+    command:
+      bash -c 'while !</dev/tcp/postgres/5432; do sleep 1; done;
+      /start-server.sh'
 
   # Runs the database process:
   postgres:
-    image: postgres:12.3
+    image: postgres:12.5
     restart: always
     environment:
       POSTGRES_USER: metecho

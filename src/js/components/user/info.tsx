@@ -10,13 +10,17 @@ import React, { useCallback, useState } from 'react';
 import { Trans } from 'react-i18next';
 import { useDispatch, useSelector } from 'react-redux';
 
-import ConnectModal from '@/components/user/connect';
-import Logout from '@/components/user/logout';
-import { ExternalLink, SpinnerWrapper, useIsMounted } from '@/components/utils';
-import { ThunkDispatch } from '@/store';
-import { disconnect, refreshDevHubStatus } from '@/store/user/actions';
-import { User } from '@/store/user/reducer';
-import { selectUserState } from '@/store/user/selectors';
+import ConnectModal from '~js/components/user/connect';
+import Logout from '~js/components/user/logout';
+import {
+  ExternalLink,
+  SpinnerWrapper,
+  useIsMounted,
+} from '~js/components/utils';
+import { ThunkDispatch } from '~js/store';
+import { disconnect, refreshDevHubStatus } from '~js/store/user/actions';
+import { User } from '~js/store/user/reducer';
+import { selectUserState } from '~js/store/user/selectors';
 
 const ConnectToSalesforce = ({
   toggleModal,
@@ -255,7 +259,9 @@ const UserDropdown = () => {
                   <div className="slds-is-absolute">
                     <Avatar
                       imgSrc={user.avatar_url}
-                      imgAlt={`${i18n.t('avatar for user')} ${user.username}`}
+                      imgAlt={i18n.t('avatar for user {{username}}', {
+                        username: user.username,
+                      })}
                       title={user.username}
                       size="small"
                     />
@@ -299,7 +305,9 @@ const UserDropdown = () => {
           label={
             <Avatar
               imgSrc={user.avatar_url}
-              imgAlt={`${i18n.t('avatar for user')} ${user.username}`}
+              imgAlt={i18n.t('avatar for user {{username}}', {
+                username: user.username,
+              })}
               title={user.username}
             />
           }

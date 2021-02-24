@@ -1,5 +1,6 @@
 import json
-import os.path
+import os
+import pathlib
 from collections import defaultdict
 
 import simple_salesforce
@@ -18,15 +19,18 @@ def get_valid_target_directories(user, scratch_org, repo_root):
     Expects to be called from within a `local_github_checkout`.
     """
     package_directories = {}
-    repo_id = scratch_org.task.project.repository.get_repo_id(user)
-    repository = get_repo_info(user, repo_id=repo_id)
+    parent = scratch_org.parent
+    project = scratch_org.root_project
+    repo = get_repo_info(
+        None, repo_owner=project.repo_owner, repo_name=project.repo_name
+    )
     source_format = get_source_format(
         repo_root=repo_root,
-        repo_name=repository.name,
-        repo_url=repository.html_url,
-        repo_owner=repository.owner.login,
-        repo_branch=scratch_org.task.branch_name,
-        repo_commit=repository.branch(scratch_org.task.branch_name).latest_sha(),
+        repo_name=repo.name,
+        repo_url=repo.html_url,
+        repo_owner=repo.owner.login,
+        repo_branch=parent.branch_name,
+        repo_commit=repo.branch(parent.branch_name).latest_sha(),
     )
     sfdx = source_format == "sfdx"
     if sfdx:
@@ -83,7 +87,7 @@ def run_retrieve_task(
     target_directory,
     originating_user_id,
 ):
-    repo_id = scratch_org.task.project.repository.get_repo_id(user)
+    repo_id = scratch_org.task.epic.project.get_repo_id()
     org_config = refresh_access_token(
         config=scratch_org.config,
         org_name="dev",
@@ -111,6 +115,9 @@ def run_retrieve_task(
         is_main_project_directory = target_directory == valid_directories["source"][0]
     else:
         is_main_project_directory = target_directory == "src"
+
+    # make sure target directory exists
+    pathlib.Path(target_directory).mkdir(parents=True, exist_ok=True)
 
     if is_main_project_directory:
         package_xml_opts = {
@@ -147,7 +154,7 @@ def commit_changes_to_github(
     target_directory,
     originating_user_id,
 ):
-    with local_github_checkout(user, repo_id) as project_path:
+    with local_github_checkout(user, repo_id, branch) as project_path:
         # This won't return anything in-memory, but rather it will emit
         # files which we then copy into a source checkout, and then
         # commit and push all that.
@@ -182,7 +189,7 @@ def get_salesforce_connection(*, scratch_org, originating_user_id, base_url=""):
         version=MetechoUniversalConfig().project__package__api_version,
     )
     conn.headers.setdefault(
-        "Sforce-Call-Options", "client={}".format(settings.SF_CLIENT_ID)
+        "Sforce-Call-Options", "client={}".format(settings.SFDX_CLIENT_ID)
     )
     conn.base_url += base_url
 

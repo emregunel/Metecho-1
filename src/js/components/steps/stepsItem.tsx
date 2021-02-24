@@ -4,9 +4,9 @@ import classNames from 'classnames';
 import i18n from 'i18next';
 import React from 'react';
 
-import { GitHubUserAvatar } from '@/components/user/githubUser';
-import { ExternalLink } from '@/components/utils';
-import { GitHubUser } from '@/store/user/reducer';
+import { GitHubUserAvatar } from '~js/components/user/githubUser';
+import { ExternalLink } from '~js/components/utils';
+import { GitHubUser } from '~js/store/user/reducer';
 
 export type Step = {
   label: string;
@@ -25,7 +25,7 @@ const StepsItem = ({
 }: {
   step: Step;
   someAssignees: boolean;
-  handleAction?: (step: Step) => void;
+  handleAction?: (s: Step) => void;
 }) => {
   const isActive = step.active && !step.complete;
   const hasAssignee = Boolean(step.assignee && !step.complete);

@@ -1,6 +1,6 @@
 import fetchMock from 'fetch-mock';
 
-import * as actions from '@/store/user/actions';
+import * as actions from '~js/store/user/actions';
 
 import { storeWithThunk } from './../../utils';
 
@@ -125,28 +125,28 @@ describe('logout', () => {
 
 describe('refetchAllData', () => {
   describe('success', () => {
-    test('GETs user from api, re-fetches repos', () => {
+    test('GETs user from api, re-fetches projects', () => {
       const store = storeWithThunk({});
       const user = { id: 'me' };
       fetchMock.getOnce(window.api_urls.user(), user);
-      fetchMock.getOnce(window.api_urls.repository_list(), []);
+      fetchMock.getOnce(window.api_urls.project_list(), []);
       const started = { type: 'REFETCH_DATA_STARTED' };
       const succeeded = { type: 'REFETCH_DATA_SUCCEEDED' };
       const loggedIn = {
         type: 'USER_LOGGED_IN',
         payload: user,
       };
-      const refreshingRepos = { type: 'REFRESHING_REPOS' };
-      const refreshedRepos = { type: 'REPOS_REFRESHED' };
-      const repoPayload = {
+      const refreshingProjects = { type: 'REFRESHING_PROJECTS' };
+      const refreshedProjects = { type: 'PROJECTS_REFRESHED' };
+      const projectPayload = {
         filters: {},
-        objectType: 'repository',
+        objectType: 'project',
         reset: true,
-        url: window.api_urls.repository_list(),
+        url: window.api_urls.project_list(),
       };
-      const fetchingRepos = {
+      const fetchingProjects = {
         type: 'FETCH_OBJECTS_STARTED',
-        payload: repoPayload,
+        payload: projectPayload,
       };
 
       expect.assertions(1);
@@ -154,9 +154,9 @@ describe('refetchAllData', () => {
         expect(store.getActions()).toEqual([
           started,
           loggedIn,
-          refreshingRepos,
-          refreshedRepos,
-          fetchingRepos,
+          refreshingProjects,
+          refreshedProjects,
+          fetchingProjects,
           succeeded,
         ]);
       });
@@ -182,7 +182,7 @@ describe('refetchAllData', () => {
       const started = { type: 'REFETCH_DATA_STARTED' };
       const failed = { type: 'REFETCH_DATA_FAILED' };
 
-      expect.assertions(5);
+      expect.assertions(4);
       return store.dispatch(actions.refetchAllData()).catch(() => {
         const allActions = store.getActions();
 
@@ -190,7 +190,6 @@ describe('refetchAllData', () => {
         expect(allActions[1].type).toEqual('ERROR_ADDED');
         expect(allActions[1].payload.message).toEqual('Internal Server Error');
         expect(allActions[2]).toEqual(failed);
-        expect(window.console.error).toHaveBeenCalled();
       });
     });
   });
@@ -225,7 +224,7 @@ describe('disconnect', () => {
       const started = { type: 'USER_DISCONNECT_REQUESTED' };
       const failed = { type: 'USER_DISCONNECT_FAILED' };
 
-      expect.assertions(5);
+      expect.assertions(4);
       return store.dispatch(actions.disconnect()).catch(() => {
         const allActions = store.getActions();
 
@@ -233,7 +232,6 @@ describe('disconnect', () => {
         expect(allActions[1].type).toEqual('ERROR_ADDED');
         expect(allActions[1].payload.message).toEqual('Internal Server Error');
         expect(allActions[2]).toEqual(failed);
-        expect(window.console.error).toHaveBeenCalled();
       });
     });
   });
@@ -268,7 +266,7 @@ describe('refreshDevHubStatus', () => {
       const started = { type: 'DEV_HUB_STATUS_REQUESTED' };
       const failed = { type: 'DEV_HUB_STATUS_FAILED' };
 
-      expect.assertions(5);
+      expect.assertions(4);
       return store.dispatch(actions.refreshDevHubStatus()).catch(() => {
         const allActions = store.getActions();
 
@@ -276,7 +274,6 @@ describe('refreshDevHubStatus', () => {
         expect(allActions[1].type).toEqual('ERROR_ADDED');
         expect(allActions[1].payload.message).toEqual('Internal Server Error');
         expect(allActions[2]).toEqual(failed);
-        expect(window.console.error).toHaveBeenCalled();
       });
     });
   });
@@ -311,7 +308,7 @@ describe('agreeToTerms', () => {
       const started = { type: 'AGREE_TO_TERMS_REQUESTED' };
       const failed = { type: 'AGREE_TO_TERMS_FAILED' };
 
-      expect.assertions(5);
+      expect.assertions(4);
       return store.dispatch(actions.agreeToTerms()).catch(() => {
         const allActions = store.getActions();
 
@@ -319,7 +316,6 @@ describe('agreeToTerms', () => {
         expect(allActions[1].type).toEqual('ERROR_ADDED');
         expect(allActions[1].payload.message).toEqual('Internal Server Error');
         expect(allActions[2]).toEqual(failed);
-        expect(window.console.error).toHaveBeenCalled();
       });
     });
   });

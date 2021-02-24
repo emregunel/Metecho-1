@@ -1,13 +1,13 @@
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitForElementToBeRemoved } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import UserDropdown, { ConnectionInfoModal } from '@/components/user/info';
-import { disconnect, refreshDevHubStatus } from '@/store/user/actions';
+import UserDropdown, { ConnectionInfoModal } from '~js/components/user/info';
+import { disconnect, refreshDevHubStatus } from '~js/store/user/actions';
 
 import { renderWithRedux, storeWithThunk } from './../../utils';
 
-jest.mock('@/store/user/actions');
+jest.mock('~js/store/user/actions');
 
 disconnect.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
 refreshDevHubStatus.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
@@ -133,20 +133,26 @@ describe('<UserDropdown />', () => {
       });
 
       describe('"check again" click', () => {
-        test('calls refreshDevHubStatus', () => {
-          const { getByText } = result;
+        test('calls refreshDevHubStatus', async () => {
+          const { getByText, container } = result;
           fireEvent.click(getByText('Check Again'));
 
           expect(refreshDevHubStatus).toHaveBeenCalledTimes(1);
+          await waitForElementToBeRemoved(
+            container.querySelector('.spinner-container'),
+          );
         });
       });
 
       describe('"disconnect" click', () => {
-        test('calls disconnect', () => {
-          const { getByText } = result;
+        test('calls disconnect', async () => {
+          const { getByText, container } = result;
           fireEvent.click(getByText('Disconnect from Salesforce'));
 
           expect(disconnect).toHaveBeenCalledTimes(1);
+          await waitForElementToBeRemoved(
+            container.querySelector('.spinner-container'),
+          );
         });
       });
     });
@@ -175,7 +181,7 @@ describe('<UserDropdown />', () => {
     test('renders nothing', () => {
       const { container } = setup({ user: null });
 
-      expect(container).toBeEmpty();
+      expect(container).toBeEmptyDOMElement();
     });
   });
 });

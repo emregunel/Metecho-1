@@ -1,4 +1,4 @@
-import * as logging from '@/utils/logging';
+import * as logging from '~js/utils/logging';
 
 describe('logError', () => {
   describe('with Sentry', () => {
@@ -34,13 +34,6 @@ describe('logError', () => {
       expect(scope.setExtras).toHaveBeenCalledWith(extra);
       expect(window.Sentry.captureMessage).toHaveBeenCalledWith('foobar');
     });
-  });
-
-  test('logs error to console', () => {
-    const extra = { foo: 'bar' };
-    logging.logError('foobar', extra);
-
-    expect(window.console.error).toHaveBeenCalledWith('foobar', extra);
   });
 });
 

@@ -1,8 +1,8 @@
-import { ThunkResult } from '@/store';
-import { Project } from '@/store/projects/reducer';
-import { Task } from '@/store/tasks/reducer';
-import apiFetch, { addUrlParams } from '@/utils/api';
-import { ObjectTypes } from '@/utils/constants';
+import { ThunkResult } from '~js/store';
+import { Epic } from '~js/store/epics/reducer';
+import { Task } from '~js/store/tasks/reducer';
+import apiFetch, { addUrlParams } from '~js/utils/api';
+import { ObjectTypes } from '~js/utils/constants';
 
 interface CreateObjectPayload {
   objectType?: ObjectTypes;
@@ -74,7 +74,7 @@ interface DeleteObjectAction {
 }
 interface ObjectRemoved {
   type: 'OBJECT_REMOVED';
-  payload: Project | Task;
+  payload: Epic | Task;
 }
 
 export type ObjectsAction =
@@ -287,7 +287,7 @@ export const deleteObject = ({
 }: {
   objectType: ObjectTypes;
   object: { id: string; [key: string]: any };
-  shouldSubscribeToObject?: boolean | ((object: any) => boolean);
+  shouldSubscribeToObject?: boolean | ((obj: any) => boolean);
 }): ThunkResult<Promise<DeleteObjectAction>> => async (dispatch) => {
   const urlFn = window.api_urls[`${objectType}_detail`];
   let baseUrl;
@@ -384,7 +384,7 @@ export const updateObject = ({
   }
 };
 
-export const removeObject = (payload: Project | Task): ObjectRemoved => ({
+export const removeObject = (payload: Epic | Task): ObjectRemoved => ({
   type: 'OBJECT_REMOVED',
   payload,
 });

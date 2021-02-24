@@ -162,14 +162,14 @@ def get_source_format(**kwargs):
 def try_to_make_branch(repository, *, new_branch, base_branch):
     branch_name = new_branch
     counter = 0
-    max_length = 100  # From models.Project.branch_name
+    max_length = 100  # From models.Epic.branch_name
     while True:
         suffix = f"-{counter}" if counter else ""
         branch_name = f"{new_branch[:max_length-len(suffix)]}{suffix}"
         try:
             latest_sha = repository.branch(base_branch).latest_sha()
             repository.create_branch_ref(branch_name, latest_sha)
-            return branch_name
+            return branch_name, latest_sha
         except UnprocessableEntity as err:
             if err.msg == "Reference already exists":
                 counter += 1

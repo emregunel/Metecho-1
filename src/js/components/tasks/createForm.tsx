@@ -5,23 +5,30 @@ import Textarea from '@salesforce/design-system-react/components/textarea';
 import i18n from 'i18next';
 import React, { useRef, useState } from 'react';
 
-import SelectFlowType from '@/components/tasks/selectFlowType';
+import SelectFlowType from '~js/components/tasks/selectFlowType';
 import {
   LabelWithSpinner,
   useForm,
   useIsMounted,
   useTransientMessage,
-} from '@/components/utils';
-import { Project } from '@/store/projects/reducer';
-import { DEFAULT_ORG_CONFIG_NAME, OBJECT_TYPES } from '@/utils/constants';
+} from '~js/components/utils';
+import { Epic } from '~js/store/epics/reducer';
+import { Project } from '~js/store/projects/reducer';
+import { DEFAULT_ORG_CONFIG_NAME, OBJECT_TYPES } from '~js/utils/constants';
 
 interface Props {
   project: Project;
+  epic: Epic;
   isOpen: boolean;
   closeCreateModal: () => void;
 }
 
-const CreateTaskModal = ({ project, isOpen, closeCreateModal }: Props) => {
+const CreateTaskModal = ({
+  project,
+  epic,
+  isOpen,
+  closeCreateModal,
+}: Props) => {
   const isMounted = useIsMounted();
   const {
     showTransientMessage,
@@ -54,7 +61,7 @@ const CreateTaskModal = ({ project, isOpen, closeCreateModal }: Props) => {
     },
     objectType: OBJECT_TYPES.TASK,
     additionalData: {
-      project: project.id,
+      epic: epic.id,
     },
     onError,
   });
@@ -101,7 +108,7 @@ const CreateTaskModal = ({ project, isOpen, closeCreateModal }: Props) => {
       isOpen={isOpen}
       size="small"
       disableClose={isSaving || isSavingBatch}
-      heading={`${i18n.t('Add a Task for')} ${project.name}`}
+      heading={i18n.t('Add a Task for {{epic_name}}', { epic_name: epic.name })}
       onRequestClose={closeModal}
       footer={[
         isShowingTransientMessage && (
@@ -166,13 +173,14 @@ const CreateTaskModal = ({ project, isOpen, closeCreateModal }: Props) => {
           id="task-description"
           label={i18n.t('Description')}
           classNameContainer="slds-form-element_stacked slds-p-left_none"
+          className="metecho-textarea"
           name="description"
           value={inputs.description}
           errorText={errors.description}
           onChange={handleInputChange}
         />
         <SelectFlowType
-          orgConfigs={project.available_task_org_config_names}
+          orgConfigs={project.org_config_names}
           projectId={project.id}
           value={inputs.org_config_name}
           errors={errors.org_config_name}

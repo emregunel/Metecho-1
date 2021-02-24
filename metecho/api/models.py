@@ -6,12 +6,11 @@ from allauth.account.signals import user_logged_in
 from allauth.socialaccount.models import SocialAccount
 from asgiref.sync import async_to_sync
 from cryptography.fernet import InvalidToken
-from cumulusci.core.config import OrgConfig
-from cumulusci.oauth.salesforce import jwt_session
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.models import UserManager as BaseUserManager
 from django.contrib.sites.models import Site
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models, transaction
@@ -24,13 +23,14 @@ from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from model_utils import Choices, FieldTracker
 from parler.models import TranslatableModel, TranslatedFields
+from requests.exceptions import HTTPError
 from sfdo_template_helpers.crypto import fernet_decrypt
 from sfdo_template_helpers.fields import MarkdownField, StringField
 from sfdo_template_helpers.slugs import AbstractSlug, SlugMixin
 from simple_salesforce.exceptions import SalesforceError
 
 from . import gh, push
-from .constants import ORGANIZATION_DETAILS
+from .constants import CHANNELS_GROUP_NAME, ORGANIZATION_DETAILS
 from .email_utils import get_user_facing_url
 from .model_mixins import (
     CreatePrMixin,
@@ -40,14 +40,14 @@ from .model_mixins import (
     SoftDeleteMixin,
     TimestampsMixin,
 )
-from .sf_run_flow import get_devhub_api
+from .sf_run_flow import get_devhub_api, refresh_access_token
 from .validators import validate_unicode_branch
 
 logger = logging.getLogger(__name__)
 
 ORG_TYPES = Choices("Production", "Scratch", "Sandbox", "Developer")
-SCRATCH_ORG_TYPES = Choices("Dev", "QA")
-PROJECT_STATUSES = Choices("Planned", "In progress", "Review", "Merged")
+SCRATCH_ORG_TYPES = Choices("Dev", "QA", "Playground")
+EPIC_STATUSES = Choices("Planned", "In progress", "Review", "Merged")
 TASK_STATUSES = Choices(
     ("Planned", "Planned"), ("In progress", "In progress"), ("Completed", "Completed")
 )
@@ -251,23 +251,23 @@ class User(HashIdMixin, AbstractUser):
         if self.full_org_type in (ORG_TYPES.Scratch, ORG_TYPES.Sandbox):
             return False
 
-        client = get_devhub_api(devhub_username=self.sf_username)
         try:
+            client = get_devhub_api(devhub_username=self.sf_username)
             resp = client.restful("sobjects/ScratchOrgInfo")
             if resp:
                 return True
             return False
-        except SalesforceError:
+        except (SalesforceError, HTTPError):
             return False
 
 
-class RepositorySlug(AbstractSlug):
+class ProjectSlug(AbstractSlug):
     parent = models.ForeignKey(
-        "Repository", on_delete=models.CASCADE, related_name="slugs"
+        "Project", on_delete=models.CASCADE, related_name="slugs"
     )
 
 
-class Repository(
+class Project(
     PushMixin,
     PopulateRepoIdMixin,
     HashIdMixin,
@@ -297,21 +297,29 @@ class Repository(
     #     "avatar_url": str,
     #   }
     github_users = models.JSONField(default=list, blank=True)
+    # List of {
+    #   "key": str,
+    #   "label": str,
+    #   "description": str,
+    # }
+    org_config_names = models.JSONField(default=list, blank=True)
+    currently_fetching_org_config_names = models.BooleanField(default=False)
+    latest_sha = StringField(blank=True)
 
-    slug_class = RepositorySlug
+    slug_class = ProjectSlug
     tracker = FieldTracker(fields=["name"])
 
     def subscribable_by(self, user):  # pragma: nocover
         return True
 
     # begin PushMixin configuration:
-    push_update_type = "REPOSITORY_UPDATE"
-    push_error_type = "REPOSITORY_UPDATE_ERROR"
+    push_update_type = "PROJECT_UPDATE"
+    push_error_type = "PROJECT_UPDATE_ERROR"
 
     def get_serialized_representation(self, user):
-        from .serializers import RepositorySerializer
+        from .serializers import ProjectSerializer
 
-        return RepositorySerializer(
+        return ProjectSerializer(
             self, context=self._create_context_with_user(user)
         ).data
 
@@ -321,38 +329,32 @@ class Repository(
         return self.name
 
     class Meta:
-        verbose_name_plural = "repositories"
         ordering = ("name",)
         unique_together = (("repo_owner", "repo_name"),)
 
     def save(self, *args, **kwargs):
         if not self.branch_name:
-            user = self.get_a_matching_user()
-            if user:
-                repo = gh.get_repo_info(user, repo_id=self.id)
-                self.branch_name = repo.default_branch
+            repo = gh.get_repo_info(
+                None, repo_owner=self.repo_owner, repo_name=self.repo_name
+            )
+            self.branch_name = repo.default_branch
+            self.latest_sha = repo.branch(repo.default_branch).latest_sha()
+
+        if not self.latest_sha:
+            repo = gh.get_repo_info(
+                None, repo_owner=self.repo_owner, repo_name=self.repo_name
+            )
+            self.latest_sha = repo.branch(self.branch_name).latest_sha()
 
         if not self.github_users:
             self.queue_populate_github_users(originating_user_id=None)
 
         if not self.repo_image_url:
-            user = self.get_a_matching_user()
-            if user:
-                from .jobs import get_social_image_job
+            from .jobs import get_social_image_job
 
-                get_social_image_job.delay(repository=self, user=user)
+            get_social_image_job.delay(project=self)
 
         super().save(*args, **kwargs)
-
-    def get_a_matching_user(self):
-        github_repository = GitHubRepository.objects.filter(
-            repo_id=self.repo_id
-        ).first()
-
-        if github_repository:
-            return github_repository.user
-
-        return None
 
     def finalize_get_social_image(self):
         self.save()
@@ -374,13 +376,37 @@ class Repository(
         from .jobs import refresh_commits_job
 
         refresh_commits_job.delay(
-            repository=self, branch_name=ref, originating_user_id=originating_user_id
+            project=self, branch_name=ref, originating_user_id=originating_user_id
         )
+
+    def queue_available_org_config_names(self, user=None):
+        from .jobs import available_org_config_names_job
+
+        self.currently_fetching_org_config_names = True
+        self.save()
+        self.notify_changed(originating_user_id=str(user.id) if user else None)
+        available_org_config_names_job.delay(self, user=user)
+
+    def finalize_available_org_config_names(self, originating_user_id=None):
+        self.currently_fetching_org_config_names = False
+        self.save()
+        self.notify_changed(originating_user_id=originating_user_id)
+
+    def finalize_project_update(self, *, originating_user_id=None):
+        self.save()
+        self.notify_changed(originating_user_id=originating_user_id)
 
     @transaction.atomic
     def add_commits(self, *, commits, ref, sender):
-        matching_tasks = Task.objects.filter(branch_name=ref, project__repository=self)
+        if self.branch_name == ref:
+            self.latest_sha = commits[0].get("id") if commits else ""
+            self.finalize_project_update()
 
+        matching_epics = Epic.objects.filter(branch_name=ref, project=self)
+        for epic in matching_epics:
+            epic.add_commits(commits)
+
+        matching_tasks = Task.objects.filter(branch_name=ref, epic__project=self)
         for task in matching_tasks:
             task.add_commits(commits, sender)
 
@@ -400,13 +426,11 @@ class GitHubRepository(HashIdMixin, models.Model):
         return self.repo_url
 
 
-class ProjectSlug(AbstractSlug):
-    parent = models.ForeignKey(
-        "Project", on_delete=models.CASCADE, related_name="slugs"
-    )
+class EpicSlug(AbstractSlug):
+    parent = models.ForeignKey("Epic", on_delete=models.CASCADE, related_name="slugs")
 
 
-class Project(
+class Epic(
     CreatePrMixin,
     PushMixin,
     HashIdMixin,
@@ -421,24 +445,17 @@ class Project(
         max_length=100, blank=True, default="", validators=[validate_unicode_branch]
     )
     has_unmerged_commits = models.BooleanField(default=False)
+    currently_creating_branch = models.BooleanField(default=False)
     currently_creating_pr = models.BooleanField(default=False)
     pr_number = models.IntegerField(null=True, blank=True)
     pr_is_open = models.BooleanField(default=False)
     pr_is_merged = models.BooleanField(default=False)
     status = models.CharField(
-        max_length=20, choices=PROJECT_STATUSES, default=PROJECT_STATUSES.Planned
+        max_length=20, choices=EPIC_STATUSES, default=EPIC_STATUSES.Planned
     )
-    # List of {
-    #   "key": str,
-    #   "label": str,
-    #   "description": str,
-    # }
-    available_task_org_config_names = models.JSONField(default=list, blank=True)
-    currently_fetching_org_config_names = models.BooleanField(default=False)
+    latest_sha = StringField(blank=True)
 
-    repository = models.ForeignKey(
-        Repository, on_delete=models.PROTECT, related_name="projects"
-    )
+    project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="epics")
 
     # User data is shaped like this:
     #   {
@@ -448,7 +465,7 @@ class Project(
     #   }
     github_users = models.JSONField(default=list, blank=True)
 
-    slug_class = ProjectSlug
+    slug_class = EpicSlug
     tracker = FieldTracker(fields=["name"])
 
     def __str__(self):
@@ -468,26 +485,24 @@ class Project(
     # end SoftDeleteMixin configuration
 
     # begin PushMixin configuration:
-    push_update_type = "PROJECT_UPDATE"
-    push_error_type = "PROJECT_CREATE_PR_FAILED"
+    push_update_type = "EPIC_UPDATE"
+    push_error_type = "EPIC_CREATE_PR_FAILED"
 
     def get_serialized_representation(self, user):
-        from .serializers import ProjectSerializer
+        from .serializers import EpicSerializer
 
-        return ProjectSerializer(
-            self, context=self._create_context_with_user(user)
-        ).data
+        return EpicSerializer(self, context=self._create_context_with_user(user)).data
 
     # end PushMixin configuration
 
     # begin CreatePrMixin configuration:
-    create_pr_event = "PROJECT_CREATE_PR"
+    create_pr_event = "EPIC_CREATE_PR"
 
-    def get_repo_id(self, user):
-        return self.repository.get_repo_id(user)
+    def get_repo_id(self):
+        return self.project.get_repo_id()
 
     def get_base(self):
-        return self.repository.branch_name
+        return self.project.branch_name
 
     def get_head(self):
         return self.branch_name
@@ -499,9 +514,9 @@ class Project(
     # end CreatePrMixin configuration
 
     def create_gh_branch(self, user):
-        from .jobs import create_gh_branch_for_new_project_job
+        from .jobs import create_gh_branch_for_new_epic_job
 
-        create_gh_branch_for_new_project_job.delay(self, user=user)
+        create_gh_branch_for_new_epic_job.delay(self, user=user)
 
     def should_update_in_progress(self):
         task_statuses = self.tasks.values_list("status", flat=True)
@@ -520,20 +535,20 @@ class Project(
 
     def should_update_status(self):
         if self.should_update_merged():
-            return self.status != PROJECT_STATUSES.Merged
+            return self.status != EPIC_STATUSES.Merged
         elif self.should_update_review():
-            return self.status != PROJECT_STATUSES.Review
+            return self.status != EPIC_STATUSES.Review
         elif self.should_update_in_progress():
-            return self.status != PROJECT_STATUSES["In progress"]
+            return self.status != EPIC_STATUSES["In progress"]
         return False
 
     def update_status(self):
         if self.should_update_merged():
-            self.status = PROJECT_STATUSES.Merged
+            self.status = EPIC_STATUSES.Merged
         elif self.should_update_review():
-            self.status = PROJECT_STATUSES.Review
+            self.status = EPIC_STATUSES.Review
         elif self.should_update_in_progress():
-            self.status = PROJECT_STATUSES["In progress"]
+            self.status = EPIC_STATUSES["In progress"]
 
     def finalize_pr_closed(self, pr_number, *, originating_user_id):
         self.pr_number = pr_number
@@ -548,7 +563,7 @@ class Project(
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_project_update(self, *, originating_user_id):
+    def finalize_epic_update(self, *, originating_user_id=None):
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
@@ -560,25 +575,16 @@ class Project(
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def queue_available_task_org_config_names(self, user):
-        from .jobs import available_task_org_config_names_job
-
-        self.currently_fetching_org_config_names = True
-        self.save()
-        self.notify_changed(originating_user_id=str(user.id))
-        available_task_org_config_names_job.delay(self, user=user)
-
-    def finalize_available_task_org_config_names(self, originating_user_id=None):
-        self.currently_fetching_org_config_names = False
-        self.save()
-        self.notify_changed(originating_user_id=originating_user_id)
+    def add_commits(self, commits):
+        self.latest_sha = commits[0].get("id") if commits else ""
+        self.finalize_epic_update()
 
     class Meta:
         ordering = ("-created_at", "name")
         # We enforce this in business logic, not in the database, as we
-        # need to limit this constraint only to active Projects, and
+        # need to limit this constraint only to active Epics, and
         # make the name column case-insensitive:
-        # unique_together = (("name", "repository"),)
+        # unique_together = (("name", "project"),)
 
 
 class TaskSlug(AbstractSlug):
@@ -595,7 +601,7 @@ class Task(
     models.Model,
 ):
     name = StringField()
-    project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="tasks")
+    epic = models.ForeignKey(Epic, on_delete=models.PROTECT, related_name="tasks")
     description = MarkdownField(blank=True, property_suffix="_markdown")
     branch_name = models.CharField(
         max_length=100, blank=True, default="", validators=[validate_unicode_branch]
@@ -607,6 +613,7 @@ class Task(
     metecho_commits = models.JSONField(default=list, blank=True)
     has_unmerged_commits = models.BooleanField(default=False)
 
+    currently_creating_branch = models.BooleanField(default=False)
     currently_creating_pr = models.BooleanField(default=False)
     pr_number = models.IntegerField(null=True, blank=True)
     pr_is_open = models.BooleanField(default=False)
@@ -639,12 +646,12 @@ class Task(
     def __str__(self):
         return self.name
 
-    def save(self, *args, force_project_save=False, **kwargs):
+    def save(self, *args, force_epic_save=False, **kwargs):
         ret = super().save(*args, **kwargs)
-        # To update the project's status:
-        if force_project_save or self.project.should_update_status():
-            self.project.save()
-            self.project.notify_changed(originating_user_id=None)
+        # To update the epic's status:
+        if force_epic_save or self.epic.should_update_status():
+            self.epic.save()
+            self.epic.notify_changed(originating_user_id=None)
         return ret
 
     def subscribable_by(self, user):  # pragma: nocover
@@ -684,11 +691,11 @@ class Task(
             self.reviewers.append(user)
             self.save()
 
-    def get_repo_id(self, user):
-        return self.project.repository.get_repo_id(user)
+    def get_repo_id(self):
+        return self.epic.project.get_repo_id()
 
     def get_base(self):
-        return self.project.branch_name
+        return self.epic.branch_name
 
     def get_head(self):
         return self.branch_name
@@ -702,18 +709,18 @@ class Task(
         user = getattr(sa, "user", None)
         if user:
             task = self
-            project = task.project
-            repo = project.repository
+            epic = task.epic
+            project = epic.project
             metecho_link = get_user_facing_url(
-                path=["repositories", repo.slug, project.slug, task.slug]
+                path=["projects", project.slug, epic.slug, task.slug]
             )
             subject = _("Metecho Task Submitted for Testing")
             body = render_to_string(
                 "pr_created_for_task.txt",
                 {
                     "task_name": task.name,
+                    "epic_name": epic.name,
                     "project_name": project.name,
-                    "repo_name": repo.name,
                     "assigned_user_name": user.username,
                     "metecho_link": metecho_link,
                 },
@@ -730,14 +737,15 @@ class Task(
         )
         self.review_valid = review_valid
 
-    def update_has_unmerged_commits(self, user=None):
-        if user is None:
-            user = self.project.repository.get_a_matching_user()
+    def update_has_unmerged_commits(self):
         base = self.get_base()
         head = self.get_head()
-        if user and head and base:
-            repo_id = self.get_repo_id(user)
-            repo = gh.get_repo_info(user, repo_id=repo_id)
+        if head and base:
+            repo = gh.get_repo_info(
+                None,
+                repo_owner=self.epic.project.repo_owner,
+                repo_name=self.epic.project.repo_name,
+            )
             base_sha = repo.branch(base).commit.sha
             head_sha = repo.branch(head).commit.sha
             self.has_unmerged_commits = (
@@ -753,9 +761,9 @@ class Task(
         self.has_unmerged_commits = False
         self.pr_number = pr_number
         self.pr_is_open = False
-        self.project.has_unmerged_commits = True
-        # This will save the project, too:
-        self.save(force_project_save=True)
+        self.epic.has_unmerged_commits = True
+        # This will save the epic, too:
+        self.save(force_epic_save=True)
         self.notify_changed(originating_user_id=originating_user_id)
 
     def finalize_pr_closed(self, pr_number, *, originating_user_id):
@@ -845,14 +853,36 @@ class Task(
         # We enforce this in business logic, not in the database, as we
         # need to limit this constraint only to active Tasks, and
         # make the name column case-insensitive:
-        # unique_together = (("name", "project"),)
+        # unique_together = (("name", "epic"),)
 
 
 class ScratchOrg(
     SoftDeleteMixin, PushMixin, HashIdMixin, TimestampsMixin, models.Model
 ):
-    task = models.ForeignKey(Task, on_delete=models.PROTECT)
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.PROTECT,
+        related_name="orgs",
+        null=True,
+        blank=True,
+    )
+    epic = models.ForeignKey(
+        Epic,
+        on_delete=models.PROTECT,
+        related_name="orgs",
+        null=True,
+        blank=True,
+    )
+    task = models.ForeignKey(
+        Task,
+        on_delete=models.PROTECT,
+        related_name="orgs",
+        null=True,
+        blank=True,
+    )
+    description = MarkdownField(blank=True, property_suffix="_markdown")
     org_type = StringField(choices=SCRATCH_ORG_TYPES)
+    org_config_name = StringField()
     owner = models.ForeignKey(User, on_delete=models.PROTECT)
     last_modified_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
@@ -889,7 +919,9 @@ class ScratchOrg(
     def _build_message_extras(self):
         return {
             "model": {
-                "task": str(self.task.id),
+                "task": str(self.task.id) if self.task else None,
+                "epic": str(self.epic.id) if self.epic else None,
+                "project": str(self.project.id) if self.project else None,
                 "org_type": self.org_type,
                 "id": str(self.id),
             }
@@ -898,6 +930,20 @@ class ScratchOrg(
     def subscribable_by(self, user):  # pragma: nocover
         return True
 
+    @property
+    def parent(self):
+        return self.project or self.epic or self.task
+
+    @property
+    def root_project(self):
+        if self.project:
+            return self.project
+        if self.epic:
+            return self.epic.project
+        if self.task:
+            return self.task.epic.project
+        return None
+
     def save(self, *args, **kwargs):
         is_new = self.id is None
         self.clean_config()
@@ -905,11 +951,23 @@ class ScratchOrg(
 
         if is_new:
             self.queue_provision(originating_user_id=str(self.owner.id))
+            self.notify_org_provisioning(originating_user_id=str(self.owner.id))
 
         return ret
 
+    def clean(self):
+        if len([x for x in [self.project, self.epic, self.task] if x is not None]) != 1:
+            raise ValidationError(
+                _("A ScratchOrg must belong to either a project, an epic, or a task.")
+            )
+        if self.org_type != SCRATCH_ORG_TYPES.Playground and not self.task:
+            raise ValidationError(
+                {"org_type": _("Dev and Test orgs must belong to a task.")}
+            )
+        return super().clean()
+
     def clean_config(self):
-        banned_keys = {"access_token"}
+        banned_keys = {"email", "access_token", "refresh_token"}
         self.config = {k: v for (k, v) in self.config.items() if k not in banned_keys}
 
     def mark_visited(self, *, originating_user_id):
@@ -917,17 +975,13 @@ class ScratchOrg(
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def get_refreshed_org_config(self):
-        org_config = OrgConfig(self.config, "dev")
-        info = jwt_session(
-            settings.SF_CLIENT_ID,
-            settings.SF_CLIENT_KEY,
-            org_config.username,
-            org_config.instance_url,
+    def get_refreshed_org_config(self, org_name=None, keychain=None):
+        org_config = refresh_access_token(
+            scratch_org=self,
+            config=self.config,
+            org_name=org_name or self.org_config_name,
+            keychain=keychain,
         )
-        org_config.config.update(info)
-        org_config._load_userinfo()
-        org_config._load_orginfo()
         return org_config
 
     def get_login_url(self):
@@ -992,7 +1046,8 @@ class ScratchOrg(
             self.notify_changed(
                 type_="SCRATCH_ORG_PROVISION", originating_user_id=originating_user_id
             )
-            self.task.finalize_provision(originating_user_id=originating_user_id)
+            if self.task:
+                self.task.finalize_provision(originating_user_id=originating_user_id)
         else:
             self.notify_scratch_org_error(
                 error=error,
@@ -1076,7 +1131,10 @@ class ScratchOrg(
                 type_="SCRATCH_ORG_COMMIT_CHANGES",
                 originating_user_id=originating_user_id,
             )
-            self.task.finalize_commit_changes(originating_user_id=originating_user_id)
+            if self.task:
+                self.task.finalize_commit_changes(
+                    originating_user_id=originating_user_id
+                )
         else:
             self.notify_scratch_org_error(
                 error=error,
@@ -1152,6 +1210,18 @@ class ScratchOrg(
             )
             self.delete()
 
+    def notify_org_provisioning(self, originating_user_id):
+        parent = self.parent
+        if parent:
+            group_name = CHANNELS_GROUP_NAME.format(
+                model=parent._meta.model_name, id=parent.id
+            )
+            self.notify_changed(
+                type_="SCRATCH_ORG_PROVISIONING",
+                originating_user_id=originating_user_id,
+                group_name=group_name,
+            )
+
 
 @receiver(user_logged_in)
 def user_logged_in_handler(sender, *, user, **kwargs):
@@ -1172,6 +1242,6 @@ def ensure_slug_handler(sender, *, created, instance, **kwargs):
         )
 
 
-post_save.connect(ensure_slug_handler, sender=Repository)
 post_save.connect(ensure_slug_handler, sender=Project)
+post_save.connect(ensure_slug_handler, sender=Epic)
 post_save.connect(ensure_slug_handler, sender=Task)

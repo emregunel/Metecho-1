@@ -6,22 +6,22 @@ import ProgressRing from '@salesforce/design-system-react/components/progress-ri
 import classNames from 'classnames';
 import i18n from 'i18next';
 import { sortBy } from 'lodash';
-import React, { useCallback, useState } from 'react';
+import React, { ReactNode, useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import {
   AssignUserModal,
   GitHubUserAvatar,
-} from '@/components/user/githubUser';
-import { Task } from '@/store/tasks/reducer';
-import { GitHubUser } from '@/store/user/reducer';
+} from '~js/components/user/githubUser';
+import { Task } from '~js/store/tasks/reducer';
+import { GitHubUser } from '~js/store/user/reducer';
 import {
   ORG_TYPES,
   OrgTypes,
   REVIEW_STATUSES,
   TASK_STATUSES,
-} from '@/utils/constants';
-import routes from '@/utils/routes';
+} from '~js/utils/constants';
+import routes from '~js/utils/routes';
 
 type AssignUserAction = ({
   task,
@@ -37,35 +37,37 @@ type AssignUserAction = ({
 
 interface TableCellProps {
   [key: string]: any;
+  className?: string;
+  children?: ReactNode;
   item?: Task;
 }
 
 interface Props {
-  repositorySlug: string;
   projectSlug: string;
+  epicSlug: string;
   tasks: Task[];
-  projectUsers: GitHubUser[];
-  openAssignProjectUsersModal: () => void;
+  epicUsers: GitHubUser[];
+  openAssignEpicUsersModal: () => void;
   assignUserAction: AssignUserAction;
 }
 
 const NameTableCell = ({
-  repositorySlug,
   projectSlug,
+  epicSlug,
   item,
   className,
   children,
   ...props
 }: TableCellProps & {
-  repositorySlug: string;
   projectSlug: string;
+  epicSlug: string;
 }) => (
   <DataTableCell
     {...props}
-    className={classNames(className, 'project-task-name', 'truncated-cell')}
+    className={classNames(className, 'epic-task-name', 'truncated-cell')}
   >
-    {repositorySlug && projectSlug && item && (
-      <Link to={routes.task_detail(repositorySlug, projectSlug, item.slug)}>
+    {projectSlug && epicSlug && item && (
+      <Link to={routes.task_detail(projectSlug, epicSlug, item.slug)}>
         {children}
       </Link>
     )}
@@ -111,7 +113,7 @@ const StatusTableCell = ({ item, className, ...props }: TableCellProps) => {
     <DataTableCell
       {...props}
       title={displayStatus || status}
-      className={classNames(className, 'project-task-status', 'status-cell')}
+      className={classNames(className, 'epic-task-status', 'status-cell')}
     >
       {icon}
       <span className="slds-m-left_x-small status-cell-text">
@@ -124,8 +126,8 @@ StatusTableCell.displayName = DataTableCell.displayName;
 
 const AssigneeTableCell = ({
   type,
-  projectUsers,
-  openAssignProjectUsersModal,
+  epicUsers,
+  openAssignEpicUsersModal,
   assignUserAction,
   item,
   className,
@@ -133,8 +135,8 @@ const AssigneeTableCell = ({
   ...props
 }: TableCellProps & {
   type: OrgTypes;
-  projectUsers: GitHubUser[];
-  openAssignProjectUsersModal: () => void;
+  epicUsers: GitHubUser[];
+  openAssignEpicUsersModal: () => void;
   assignUserAction: AssignUserAction;
   children?: GitHubUser | null;
 }) => {
@@ -149,8 +151,8 @@ const AssigneeTableCell = ({
   };
   const handleEmptyMessageClick = useCallback(() => {
     closeAssignUserModal();
-    openAssignProjectUsersModal();
-  }, [openAssignProjectUsersModal]);
+    openAssignEpicUsersModal();
+  }, [openAssignEpicUsersModal]);
 
   const doAssignUserAction = useCallback(
     (assignee: GitHubUser | null, shouldAlertAssignee: boolean) => {
@@ -196,11 +198,11 @@ const AssigneeTableCell = ({
           onClick={openAssignUserModal}
         />
         <AssignUserModal
-          allUsers={projectUsers}
-          selectedUser={assignedUser}
+          allUsers={epicUsers}
+          selectedUser={assignedUser || null}
           orgType={type}
           isOpen={assignUserModalOpen}
-          emptyMessageText={i18n.t('Add Project Collaborators')}
+          emptyMessageText={i18n.t('Add Epic Collaborators')}
           emptyMessageAction={handleEmptyMessageClick}
           onRequestClose={closeAssignUserModal}
           setUser={doAssignUserAction}
@@ -212,7 +214,7 @@ const AssigneeTableCell = ({
     <DataTableCell
       {...props}
       title={title}
-      className={classNames(className, 'project-task-assignee')}
+      className={classNames(className, 'epic-task-assignee')}
     >
       {contents}
     </DataTableCell>
@@ -221,11 +223,11 @@ const AssigneeTableCell = ({
 AssigneeTableCell.displayName = DataTableCell.displayName;
 
 const TaskTable = ({
-  repositorySlug,
   projectSlug,
+  epicSlug,
   tasks,
-  projectUsers,
-  openAssignProjectUsersModal,
+  epicUsers,
+  openAssignEpicUsersModal,
   assignUserAction,
 }: Props) => {
   const statusOrder = {
@@ -238,7 +240,7 @@ const TaskTable = ({
     'name',
   ]);
   return (
-    <DataTable items={taskDefaultSort} id="project-tasks-table" noRowHover>
+    <DataTable items={taskDefaultSort} id="epic-tasks-table" noRowHover>
       <DataTableColumn
         key="name"
         label={i18n.t('Task')}
@@ -246,10 +248,7 @@ const TaskTable = ({
         width="65%"
         primaryColumn
       >
-        <NameTableCell
-          repositorySlug={repositorySlug}
-          projectSlug={projectSlug}
-        />
+        <NameTableCell projectSlug={projectSlug} epicSlug={epicSlug} />
       </DataTableColumn>
       <DataTableColumn
         key="status"
@@ -267,8 +266,8 @@ const TaskTable = ({
       >
         <AssigneeTableCell
           type={ORG_TYPES.DEV}
-          projectUsers={projectUsers}
-          openAssignProjectUsersModal={openAssignProjectUsersModal}
+          epicUsers={epicUsers}
+          openAssignEpicUsersModal={openAssignEpicUsersModal}
           assignUserAction={assignUserAction}
         />
       </DataTableColumn>
@@ -280,8 +279,8 @@ const TaskTable = ({
       >
         <AssigneeTableCell
           type={ORG_TYPES.QA}
-          projectUsers={projectUsers}
-          openAssignProjectUsersModal={openAssignProjectUsersModal}
+          epicUsers={epicUsers}
+          openAssignEpicUsersModal={openAssignEpicUsersModal}
           assignUserAction={assignUserAction}
         />
       </DataTableColumn>

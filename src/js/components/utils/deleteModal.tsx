@@ -6,15 +6,15 @@ import { Trans } from 'react-i18next';
 import { useDispatch } from 'react-redux';
 import { RouteComponentProps, withRouter } from 'react-router-dom';
 
-import { LabelWithSpinner, useIsMounted } from '@/components/utils';
-import { ThunkDispatch } from '@/store';
-import { deleteObject } from '@/store/actions';
-import { Project } from '@/store/projects/reducer';
-import { Task } from '@/store/tasks/reducer';
-import { OBJECT_TYPES, ObjectTypes } from '@/utils/constants';
+import { LabelWithSpinner, useIsMounted } from '~js/components/utils';
+import { ThunkDispatch } from '~js/store';
+import { deleteObject } from '~js/store/actions';
+import { Epic } from '~js/store/epics/reducer';
+import { Task } from '~js/store/tasks/reducer';
+import { OBJECT_TYPES, ObjectTypes } from '~js/utils/constants';
 
 interface Props extends RouteComponentProps {
-  model: Project | Task;
+  model: Epic | Task;
   modelType: ObjectTypes;
   isOpen: boolean;
   redirect: string;
@@ -55,12 +55,12 @@ const DeleteModal = ({
 
   let heading, message;
   switch (modelType) {
-    case OBJECT_TYPES.PROJECT:
-      heading = i18n.t('Confirm Deleting Project');
+    case OBJECT_TYPES.EPIC:
+      heading = i18n.t('Confirm Deleting Epic');
       message = (
-        <Trans i18nKey="confirmDeleteProject">
-          Are you sure you want to delete project “{{ name: model.name }}”? This
-          will also delete any tasks and scratch orgs in this project.
+        <Trans i18nKey="confirmDeleteEpic">
+          Are you sure you want to delete epic “{{ name: model.name }}”? This
+          will also delete any tasks and scratch orgs in this epic.
         </Trans>
       );
       break;

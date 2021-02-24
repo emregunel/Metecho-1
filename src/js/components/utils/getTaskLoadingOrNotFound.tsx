@@ -1,35 +1,35 @@
 import React, { ReactElement } from 'react';
 
-import ProjectNotFound from '@/components/projects/project404';
-import RepositoryNotFound from '@/components/repositories/repository404';
-import TaskNotFound from '@/components/tasks/task404';
-import { SpinnerWrapper } from '@/components/utils';
-import { Project } from '@/store/projects/reducer';
-import { Repository } from '@/store/repositories/reducer';
-import { Task } from '@/store/tasks/reducer';
+import EpicNotFound from '~js/components/epics/epic404';
+import ProjectNotFound from '~js/components/projects/project404';
+import TaskNotFound from '~js/components/tasks/task404';
+import { SpinnerWrapper } from '~js/components/utils';
+import { Epic } from '~js/store/epics/reducer';
+import { Project } from '~js/store/projects/reducer';
+import { Task } from '~js/store/tasks/reducer';
 
 export default ({
-  repository,
   project,
+  epic,
   task,
   taskSlug,
 }: {
-  repository?: Repository | null;
   project?: Project | null;
+  epic?: Epic | null;
   task?: Task | null;
   taskSlug?: string;
 }): ReactElement | false => {
   if (!task) {
     /* istanbul ignore if */
-    if (!repository) {
-      return <RepositoryNotFound />;
+    if (!project) {
+      return <ProjectNotFound />;
     }
     /* istanbul ignore if */
-    if (!project) {
-      return <ProjectNotFound repository={repository} />;
+    if (!epic) {
+      return <EpicNotFound project={project} />;
     }
     if (!taskSlug || task === null) {
-      return <TaskNotFound repository={repository} project={project} />;
+      return <TaskNotFound project={project} epic={epic} />;
     }
     // Fetching task from API
     return <SpinnerWrapper />;

@@ -1,4 +1,4 @@
-import reducer from '@/store';
+import reducer from '~js/store';
 
 describe('reducer', () => {
   test('combines child reducers', () => {
@@ -9,8 +9,8 @@ describe('reducer', () => {
         'toasts',
         'errors',
         'orgs',
+        'epics',
         'projects',
-        'repositories',
         'socket',
         'tasks',
         'user',

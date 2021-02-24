@@ -2,12 +2,12 @@ import { fireEvent } from '@testing-library/react';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
 
-import { DeleteModal } from '@/components/utils';
-import { deleteObject } from '@/store/actions';
+import { DeleteModal } from '~js/components/utils';
+import { deleteObject } from '~js/store/actions';
 
 import { renderWithRedux, storeWithThunk } from './../../utils';
 
-jest.mock('@/store/actions');
+jest.mock('~js/store/actions');
 
 deleteObject.mockReturnValue(() =>
   Promise.resolve({ type: 'TEST', payload: {} }),
@@ -17,17 +17,17 @@ afterEach(() => {
   deleteObject.mockClear();
 });
 
-const defaultProject = {
-  id: 'project-id',
-  name: 'Project Name',
-  description: 'Description of the project',
+const defaultEpic = {
+  id: 'epic-id',
+  name: 'Epic Name',
+  description: 'Description of the epic',
 };
 
 describe('<DeleteModal />', () => {
   const setup = (options = {}) => {
     const defaults = {
-      model: defaultProject,
-      modelType: 'project',
+      model: defaultEpic,
+      modelType: 'epic',
       redirect: '/foo',
     };
     const opts = Object.assign({}, defaults, options);
@@ -45,20 +45,19 @@ describe('<DeleteModal />', () => {
     };
   };
 
-  test('deletes project and redirects', async () => {
-    const { getByText, context } = setup();
+  test('deletes epic and redirects', async () => {
+    const { findByText, getByText, context } = setup();
 
     fireEvent.click(getByText('Delete'));
 
+    expect.assertions(4);
+    await findByText('Deleting…');
+
     expect(deleteObject).toHaveBeenCalledTimes(1);
     expect(deleteObject).toHaveBeenCalledWith({
-      objectType: 'project',
-      object: defaultProject,
+      objectType: 'epic',
+      object: defaultEpic,
     });
-
-    expect.assertions(4);
-    await deleteObject;
-
     expect(context.action).toEqual('PUSH');
     expect(context.url).toEqual('/foo');
   });

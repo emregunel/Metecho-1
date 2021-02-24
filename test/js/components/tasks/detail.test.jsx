@@ -1,37 +1,64 @@
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitForElementToBeRemoved } from '@testing-library/react';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
 
-import TaskDetail from '@/components/tasks/detail';
-import { createObject, fetchObjects } from '@/store/actions';
-import { refetchOrg, refreshOrg } from '@/store/orgs/actions';
-import { TASK_STATUSES } from '@/utils/constants';
-import routes from '@/utils/routes';
+import TaskDetail from '~js/components/tasks/detail';
+import { createObject, fetchObjects } from '~js/store/actions';
+import { refetchOrg, refreshOrg } from '~js/store/orgs/actions';
+import { defaultState as defaultOrgsState } from '~js/store/orgs/reducer';
+import { refreshOrgConfigs } from '~js/store/projects/actions';
+import { TASK_STATUSES } from '~js/utils/constants';
+import routes from '~js/utils/routes';
 
-import { renderWithRedux, storeWithThunk } from './../../utils';
+import {
+  renderWithRedux,
+  reRenderWithRedux,
+  storeWithThunk,
+} from './../../utils';
 
-jest.mock('@/store/actions');
-jest.mock('@/store/orgs/actions');
+jest.mock('~js/store/actions');
+jest.mock('~js/store/orgs/actions');
+jest.mock('~js/store/projects/actions');
 
-createObject.mockReturnValue(() =>
-  Promise.resolve({ type: 'TEST', payload: {} }),
-);
-fetchObjects.mockReturnValue(() =>
-  Promise.resolve({ type: 'TEST', payload: {} }),
-);
-refetchOrg.mockReturnValue(() =>
-  Promise.resolve({ type: 'TEST', payload: {} }),
-);
-refreshOrg.mockReturnValue(() =>
-  Promise.resolve({ type: 'TEST', payload: {} }),
-);
+createObject.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
+fetchObjects.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
+refetchOrg.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
+refreshOrg.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
+refreshOrgConfigs.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
 
 afterEach(() => {
   createObject.mockClear();
   fetchObjects.mockClear();
   refetchOrg.mockClear();
   refreshOrg.mockClear();
+  refreshOrgConfigs.mockClear();
 });
+
+const defaultOrg = {
+  id: 'org-id',
+  task: 'task1',
+  org_type: 'Dev',
+  owner: 'user-id',
+  owner_gh_username: 'user-name',
+  expires_at: '2019-09-16T12:58:53.721Z',
+  latest_commit: '617a51',
+  latest_commit_url: '/test/commit/url/',
+  latest_commit_at: '2019-08-16T12:58:53.721Z',
+  last_checked_unsaved_changes_at: new Date().toISOString(),
+  url: '/test/org/url/',
+  is_created: true,
+  unsaved_changes: { Foo: ['Bar'] },
+  has_unsaved_changes: true,
+  total_unsaved_changes: 1,
+  ignored_changes: {},
+  has_ignored_changes: false,
+  total_ignored_changes: 0,
+  valid_target_directories: {
+    source: ['src'],
+    post: ['foo/bar', 'buz/baz'],
+  },
+  has_been_visited: true,
+};
 
 const defaultState = {
   user: {
@@ -40,15 +67,15 @@ const defaultState = {
     valid_token_for: 'my-org',
     is_devhub_enabled: true,
   },
-  repositories: {
-    repositories: [
+  projects: {
+    projects: [
       {
         id: 'r1',
-        name: 'Repository 1',
-        slug: 'repository-1',
+        name: 'Project 1',
+        slug: 'project-1',
         old_slugs: [],
-        description: 'This is a test repository.',
-        description_rendered: '<p>This is a test repository.</p>',
+        description: 'This is a test project.',
+        description_rendered: '<p>This is a test project.</p>',
         repo_url: 'https://github.com/test/test-repo',
         repo_owner: 'test',
         repo_name: 'test-repo',
@@ -60,19 +87,19 @@ const defaultState = {
         ],
       },
     ],
-    notFound: ['different-repository'],
+    notFound: ['different-project'],
     next: null,
   },
-  projects: {
+  epics: {
     r1: {
-      projects: [
+      epics: [
         {
-          id: 'project1',
-          slug: 'project-1',
-          name: 'Project 1',
-          repository: 'r1',
-          description: 'Project Description',
-          description_rendered: '<p>Project Description</p>',
+          id: 'epic1',
+          slug: 'epic-1',
+          name: 'Epic 1',
+          project: 'r1',
+          description: 'Epic Description',
+          description_rendered: '<p>Epic Description</p>',
           branch_url: 'https://github.com/test/test-repo/tree/branch-name',
           branch_name: 'branch-name',
           old_slugs: [],
@@ -85,20 +112,20 @@ const defaultState = {
         },
       ],
       next: null,
-      notFound: ['different-project'],
+      notFound: ['different-epic'],
       fetched: true,
     },
   },
   tasks: {
-    project1: [
+    epic1: [
       {
         id: 'task1',
         name: 'Task 1',
         slug: 'task-1',
         old_slugs: ['old-slug'],
-        project: 'project1',
-        branch_url: 'https://github.com/test/test-repo/tree/project__task',
-        branch_name: 'project__task',
+        epic: 'epic1',
+        branch_url: 'https://github.com/test/test-repo/tree/epic__task',
+        branch_name: 'epic__task',
         description: 'Task Description',
         description_rendered: '<p>Task Description</p>',
         has_unmerged_commits: false,
@@ -111,33 +138,13 @@ const defaultState = {
     ],
   },
   orgs: {
-    task1: {
-      Dev: {
-        id: 'org-id',
-        task: 'task1',
-        org_type: 'Dev',
-        owner: 'user-id',
-        owner_gh_username: 'user-name',
-        expires_at: '2019-09-16T12:58:53.721Z',
-        latest_commit: '617a51',
-        latest_commit_url: '/test/commit/url/',
-        latest_commit_at: '2019-08-16T12:58:53.721Z',
-        last_checked_unsaved_changes_at: new Date().toISOString(),
-        url: '/test/org/url/',
-        is_created: true,
-        unsaved_changes: { Foo: ['Bar'] },
-        has_unsaved_changes: true,
-        total_unsaved_changes: 1,
-        ignored_changes: {},
-        has_ignored_changes: false,
-        total_ignored_changes: 0,
-        valid_target_directories: {
-          source: ['src'],
-          post: ['foo/bar', 'buz/baz'],
-        },
-        has_been_visited: true,
-      },
-      QA: null,
+    orgs: {
+      [defaultOrg.id]: defaultOrg,
+    },
+    fetched: {
+      projects: [],
+      epics: [],
+      tasks: ['task1'],
     },
   },
 };
@@ -146,26 +153,29 @@ describe('<TaskDetail/>', () => {
   const setup = (options) => {
     const defaults = {
       initialState: defaultState,
-      repositorySlug: 'repository-1',
       projectSlug: 'project-1',
+      epicSlug: 'epic-1',
       taskSlug: 'task-1',
       rerender: false,
     };
     const opts = Object.assign({}, defaults, options);
-    const { initialState, repositorySlug, projectSlug, taskSlug } = opts;
+    const { initialState, projectSlug, epicSlug, taskSlug } = opts;
     const context = {};
-    const result = renderWithRedux(
+    const ui = (
       <StaticRouter context={context}>
-        <TaskDetail
-          match={{ params: { repositorySlug, projectSlug, taskSlug } }}
-        />
-      </StaticRouter>,
-      initialState,
-      storeWithThunk,
-      opts.rerender,
-      opts.store,
+        <TaskDetail match={{ params: { projectSlug, epicSlug, taskSlug } }} />
+      </StaticRouter>
     );
-    return { ...result, context };
+    if (opts.rerender) {
+      return {
+        ...reRenderWithRedux(ui, opts.store, opts.rerender),
+        context,
+      };
+    }
+    return {
+      ...renderWithRedux(ui, initialState, storeWithThunk),
+      context,
+    };
   };
 
   test('renders task detail with org', () => {
@@ -184,9 +194,9 @@ describe('<TaskDetail/>', () => {
         ...defaultState,
         tasks: {
           ...defaultState.tasks,
-          project1: [
+          epic1: [
             {
-              ...defaultState.tasks.project1[0],
+              ...defaultState.tasks.epic1[0],
               branch_diff_url: 'https://github.com/example/repo',
               has_unmerged_commits: true,
             },
@@ -205,9 +215,9 @@ describe('<TaskDetail/>', () => {
         ...defaultState,
         tasks: {
           ...defaultState.tasks,
-          project1: [
+          epic1: [
             {
-              ...defaultState.tasks.project1[0],
+              ...defaultState.tasks.epic1[0],
               pr_url: 'my-pr-url',
             },
           ],
@@ -227,20 +237,9 @@ describe('<TaskDetail/>', () => {
 
       expect(queryByText('Task 1')).toBeNull();
       expect(fetchObjects).toHaveBeenCalledWith({
-        filters: { project: 'project1' },
+        filters: { epic: 'epic1' },
         objectType: 'task',
       });
-    });
-  });
-
-  describe('repository does not exist', () => {
-    test('renders <RepositoryNotFound />', () => {
-      const { getByText, queryByText } = setup({
-        repositorySlug: 'different-repository',
-      });
-
-      expect(queryByText('Task 1')).toBeNull();
-      expect(getByText('list of all repositories')).toBeVisible();
     });
   });
 
@@ -251,7 +250,18 @@ describe('<TaskDetail/>', () => {
       });
 
       expect(queryByText('Task 1')).toBeNull();
-      expect(getByText('another project')).toBeVisible();
+      expect(getByText('list of all projects')).toBeVisible();
+    });
+  });
+
+  describe('epic does not exist', () => {
+    test('renders <EpicNotFound />', () => {
+      const { getByText, queryByText } = setup({
+        epicSlug: 'different-epic',
+      });
+
+      expect(queryByText('Task 1')).toBeNull();
+      expect(getByText('another epic')).toBeVisible();
     });
   });
 
@@ -272,7 +282,7 @@ describe('<TaskDetail/>', () => {
 
       expect(context.action).toEqual('REPLACE');
       expect(context.url).toEqual(
-        routes.task_detail('repository-1', 'project-1', 'task-1'),
+        routes.task_detail('project-1', 'epic-1', 'task-1'),
       );
     });
   });
@@ -282,7 +292,7 @@ describe('<TaskDetail/>', () => {
       const { queryByText } = setup({
         initialState: {
           ...defaultState,
-          orgs: {},
+          orgs: defaultOrgsState,
         },
       });
 
@@ -348,10 +358,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           orgs: {
             ...defaultState.orgs,
-            task1: {
-              ...defaultState.orgs.task1,
-              Dev: {
-                ...defaultState.orgs.task1.Dev,
+            orgs: {
+              [defaultOrg.id]: {
+                ...defaultOrg,
                 currently_capturing_changes: true,
               },
             },
@@ -370,10 +379,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           orgs: {
             ...defaultState.orgs,
-            task1: {
-              ...defaultState.orgs.task1,
-              Dev: {
-                ...defaultState.orgs.task1.Dev,
+            orgs: {
+              [defaultOrg.id]: {
+                ...defaultOrg,
                 currently_reassigning_user: true,
               },
             },
@@ -392,9 +400,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           tasks: {
             ...defaultState.tasks,
-            project1: [
+            epic1: [
               {
-                ...defaultState.tasks.project1[0],
+                ...defaultState.tasks.epic1[0],
                 has_unmerged_commits: true,
                 pr_url: 'my-pr-url',
                 pr_is_open: false,
@@ -415,9 +423,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           tasks: {
             ...defaultState.tasks,
-            project1: [
+            epic1: [
               {
-                ...defaultState.tasks.project1[0],
+                ...defaultState.tasks.epic1[0],
                 has_unmerged_commits: true,
                 pr_url: 'my-pr-url',
                 pr_is_open: true,
@@ -439,9 +447,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           tasks: {
             ...defaultState.tasks,
-            project1: [
+            epic1: [
               {
-                ...defaultState.tasks.project1[0],
+                ...defaultState.tasks.epic1[0],
                 has_unmerged_commits: true,
               },
             ],
@@ -461,9 +469,9 @@ describe('<TaskDetail/>', () => {
           ...defaultState,
           tasks: {
             ...defaultState.tasks,
-            project1: [
+            epic1: [
               {
-                ...defaultState.tasks.project1[0],
+                ...defaultState.tasks.epic1[0],
                 has_unmerged_commits: true,
                 currently_creating_pr: true,
               },
@@ -482,9 +490,9 @@ describe('<TaskDetail/>', () => {
         ...defaultState,
         tasks: {
           ...defaultState.tasks,
-          project1: [
+          epic1: [
             {
-              ...defaultState.tasks.project1[0],
+              ...defaultState.tasks.epic1[0],
               has_unmerged_commits: true,
               currently_creating_pr: true,
             },
@@ -492,10 +500,9 @@ describe('<TaskDetail/>', () => {
         },
         orgs: {
           ...defaultState.orgs,
-          task1: {
-            ...defaultState.orgs.task1,
-            Dev: {
-              ...defaultState.orgs.task1.Dev,
+          orgs: {
+            [defaultOrg.id]: {
+              ...defaultOrg,
               total_unsaved_changes: 0,
             },
           },
@@ -507,27 +514,30 @@ describe('<TaskDetail/>', () => {
   });
 
   describe('edit task click', () => {
-    test('opens and closes modal', () => {
+    test('opens and closes modal', async () => {
       const { getByText, queryByText } = setup();
-      fireEvent.click(getByText('Task Options'));
-      fireEvent.click(getByText('Edit Task'));
+
+      expect.assertions(2);
+      await fireEvent.click(getByText('Task Options'));
+      await fireEvent.click(getByText('Edit Task'));
 
       expect(getByText('Edit Task')).toBeVisible();
 
-      fireEvent.click(getByText('Cancel'));
+      await fireEvent.click(getByText('Cancel'));
 
       expect(queryByText('Edit Task')).toBeNull();
     });
   });
 
-  test('opens/closed deleted modal', () => {
+  test('opens/closed deleted modal', async () => {
     const { getByText, queryByText } = setup();
-    fireEvent.click(getByText('Task Options'));
-    fireEvent.click(getByText('Delete Task'));
+    expect.assertions(2);
+    await fireEvent.click(getByText('Task Options'));
+    await fireEvent.click(getByText('Delete Task'));
 
     expect(getByText('Confirm Deleting Task')).toBeVisible();
 
-    fireEvent.click(getByText('Cancel'));
+    await fireEvent.click(getByText('Cancel'));
 
     expect(queryByText('Confirm Deleting Task')).toBeNull();
   });
@@ -535,9 +545,9 @@ describe('<TaskDetail/>', () => {
   describe('submitting a review', () => {
     const tasks = {
       ...defaultState.tasks,
-      project1: [
+      epic1: [
         {
-          ...defaultState.tasks.project1[0],
+          ...defaultState.tasks.epic1[0],
           pr_is_open: true,
           assigned_qa: { id: 'user-id', login: 'user-name' },
           commits: [],
@@ -549,10 +559,9 @@ describe('<TaskDetail/>', () => {
     };
     const orgs = {
       ...defaultState.orgs,
-      task1: {
-        Dev: null,
-        QA: {
-          ...defaultState.orgs.task1.Dev,
+      orgs: {
+        [defaultOrg.id]: {
+          ...defaultOrg,
           org_type: 'QA',
           latest_commit: 'parent',
           has_been_visited: true,
@@ -560,7 +569,7 @@ describe('<TaskDetail/>', () => {
       },
     };
 
-    test('opens submit review modal', () => {
+    test('opens submit review modal', async () => {
       const { getByText, queryByText } = setup({
         initialState: {
           ...defaultState,
@@ -568,17 +577,19 @@ describe('<TaskDetail/>', () => {
           orgs,
         },
       });
-      fireEvent.click(getByText('Submit Review'));
+
+      expect.assertions(2);
+      await fireEvent.click(getByText('Submit Review'));
 
       expect(getByText('Submit Task Review')).toBeVisible();
 
-      fireEvent.click(getByText('Cancel'));
+      await fireEvent.click(getByText('Cancel'));
 
       expect(queryByText('Submit Task Review')).toBeNull();
     });
 
     describe('form submit', () => {
-      test('submits task review', () => {
+      test('submits task review', async () => {
         const { getByText, baseElement } = setup({
           initialState: {
             ...defaultState,
@@ -586,11 +597,12 @@ describe('<TaskDetail/>', () => {
             orgs,
           },
         });
-        fireEvent.click(getByText('Submit Review'));
-        const submit = baseElement.querySelector('.slds-button[type="submit"]');
-        fireEvent.click(submit);
 
-        expect(getByText('Submitting Review…')).toBeVisible();
+        expect.assertions(2);
+        await fireEvent.click(getByText('Submit Review'));
+        const submit = baseElement.querySelector('.slds-button[type="submit"]');
+        await fireEvent.click(submit);
+
         expect(createObject).toHaveBeenCalledTimes(1);
         expect(createObject).toHaveBeenCalledWith({
           url: window.api_urls.task_review('task1'),
@@ -605,15 +617,15 @@ describe('<TaskDetail/>', () => {
         });
       });
 
-      test('submits task review without org', () => {
+      test('submits task review without org', async () => {
         const { getByText, baseElement } = setup({
           initialState: {
             ...defaultState,
             tasks: {
               ...defaultState.tasks,
-              project1: [
+              epic1: [
                 {
-                  ...defaultState.tasks.project1[0],
+                  ...defaultState.tasks.epic1[0],
                   pr_is_open: true,
                   assigned_qa: { id: 'user-id', login: 'user-name' },
                   commits: [],
@@ -624,14 +636,20 @@ describe('<TaskDetail/>', () => {
                 },
               ],
             },
-            orgs: { task1: { Dev: null, QA: null } },
+            orgs: {
+              ...defaultState.orgs,
+              orgs: {},
+            },
           },
         });
-        fireEvent.click(getByText('Update Review'));
-        const submit = baseElement.querySelector('.slds-button[type="submit"]');
-        fireEvent.click(submit);
 
-        expect(getByText('Submitting Review…')).toBeVisible();
+        expect.assertions(2);
+        await fireEvent.click(getByText('Update Review'));
+        const submit = baseElement.querySelector(
+          '.slds-modal__footer .slds-button[type="submit"]',
+        );
+        await fireEvent.click(submit);
+
         expect(createObject).toHaveBeenCalledTimes(1);
         expect(createObject).toHaveBeenCalledWith({
           url: window.api_urls.task_review('task1'),
@@ -711,14 +729,23 @@ describe('<TaskDetail/>', () => {
     };
 
     test.each([
-      ['assign-dev', {}, null, null, 'Assign a Developer', 'Assign Developer'],
+      [
+        'assign-dev',
+        {},
+        null,
+        null,
+        'Assign a Developer',
+        'Assign Developer',
+        false,
+      ],
       [
         'create-dev-org',
         taskWithDev,
         null,
         null,
-        'Create a Scratch Org for development',
+        'Create a Dev Org',
         'Creating Org…',
+        true,
       ],
       [
         'retrieve-changes',
@@ -727,6 +754,7 @@ describe('<TaskDetail/>', () => {
         null,
         'Retrieve changes from Dev Org',
         'Select the location to retrieve changes',
+        false,
       ],
       [
         'submit-changes',
@@ -735,15 +763,25 @@ describe('<TaskDetail/>', () => {
         null,
         'Submit changes for testing',
         'Submit this task for testing',
+        false,
       ],
-      ['assign-qa', taskWithPR, {}, null, 'Assign a Tester', 'Assign Tester'],
+      [
+        'assign-qa',
+        taskWithPR,
+        {},
+        null,
+        'Assign a Tester',
+        'Assign Tester',
+        false,
+      ],
       [
         'create-qa-org',
         taskWithTester,
         {},
         null,
-        'Create a Scratch Org for testing',
+        'Create a Test Org',
         'Creating Org…',
+        true,
       ],
       [
         'refresh-test-org',
@@ -752,6 +790,7 @@ describe('<TaskDetail/>', () => {
         {},
         'Refresh Test Org',
         refreshOrg,
+        false,
       ],
       [
         'submit-review',
@@ -760,40 +799,44 @@ describe('<TaskDetail/>', () => {
         testOrgVisited,
         'Submit a review',
         'Submit Task Review',
+        false,
       ],
     ])(
       'step action click: %s',
-      (name, taskOpts, devOrgOpts, testOrgOpts, trigger, expected) => {
+      async (
+        name,
+        taskOpts,
+        devOrgOpts,
+        testOrgOpts,
+        trigger,
+        expected,
+        waitForRemoval,
+      ) => {
         const task = {
-          ...defaultState.tasks.project1[0],
+          ...defaultState.tasks.epic1[0],
           ...defaultTask,
           ...taskOpts,
         };
         let devOrg, testOrg;
-        if (devOrgOpts === null) {
-          devOrg = null;
-        } else {
+        const orgs = {};
+        if (devOrgOpts !== null) {
           devOrg = { ...defaultDevOrg, ...devOrgOpts };
+          orgs[devOrg.id] = devOrg;
         }
-        if (testOrgOpts === null) {
-          testOrg = null;
-        } else {
+        if (testOrgOpts !== null) {
           testOrg = { ...defaultTestOrg, ...testOrgOpts };
+          orgs[testOrg.id] = testOrg;
         }
-        const orgs = {
-          Dev: devOrg,
-          QA: testOrg,
-        };
         const { getByText } = setup({
           initialState: {
             ...defaultState,
             tasks: {
               ...defaultState.tasks,
-              project1: [task],
+              epic1: [task],
             },
             orgs: {
               ...defaultState.orgs,
-              task1: orgs,
+              orgs,
             },
           },
         });
@@ -801,6 +844,9 @@ describe('<TaskDetail/>', () => {
 
         if (typeof expected === 'string') {
           expect(getByText(expected)).toBeVisible();
+          if (waitForRemoval) {
+            await waitForElementToBeRemoved(getByText(expected));
+          }
         } else {
           expect(expected).toHaveBeenCalledTimes(1);
         }

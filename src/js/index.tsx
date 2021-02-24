@@ -1,14 +1,14 @@
+import IconSettings from '@salesforce/design-system-react/components/icon-settings';
+import settings from '@salesforce/design-system-react/components/settings';
 import actionSprite from '@salesforce-ux/design-system/assets/icons/action-sprite/svg/symbols.svg';
 import customSprite from '@salesforce-ux/design-system/assets/icons/custom-sprite/svg/symbols.svg';
 import doctypeSprite from '@salesforce-ux/design-system/assets/icons/doctype-sprite/svg/symbols.svg';
 import standardSprite from '@salesforce-ux/design-system/assets/icons/standard-sprite/svg/symbols.svg';
 import utilitySprite from '@salesforce-ux/design-system/assets/icons/utility-sprite/svg/symbols.svg';
-import IconSettings from '@salesforce/design-system-react/components/icon-settings';
-import settings from '@salesforce/design-system-react/components/settings';
 import i18n from 'i18next';
 import React, { useEffect } from 'react';
 import DocumentTitle from 'react-document-title';
-import ReactDOM from 'react-dom';
+import { render } from 'react-dom';
 import { Provider } from 'react-redux';
 import {
   BrowserRouter,
@@ -23,34 +23,34 @@ import { composeWithDevTools } from 'redux-devtools-extension';
 import logger from 'redux-logger';
 import thunk, { ThunkDispatch } from 'redux-thunk';
 
-import FourOhFour from '@/components/404';
-import DashboardDetail from '@/components/dashboard/detail';
-import ErrorBoundary from '@/components/error';
-import Footer from '@/components/footer';
-import Header from '@/components/header';
-import ProjectDetail from '@/components/projects/detail';
-import RepositoryDetail from '@/components/repositories/detail';
-import RepositoryList from '@/components/repositories/list';
-import TaskDetail from '@/components/tasks/detail';
-import Terms from '@/components/terms';
-import AuthError from '@/components/user/authError';
-import Login from '@/components/user/login';
-import { PrivateRoute } from '@/components/utils';
-import initializeI18n from '@/i18n';
-import reducer from '@/store';
-import { fetchObjects } from '@/store/actions';
-import { clearErrors } from '@/store/errors/actions';
-import { reposRefreshing } from '@/store/repositories/actions';
-import { selectRepositories } from '@/store/repositories/selectors';
-import { clearToasts } from '@/store/toasts/actions';
-import { login, refetchAllData } from '@/store/user/actions';
-import { User } from '@/store/user/reducer';
-import { selectUserState } from '@/store/user/selectors';
-import { OBJECT_TYPES } from '@/utils/constants';
-import { log, logError } from '@/utils/logging';
-import routes, { routePatterns } from '@/utils/routes';
-import { createSocket } from '@/utils/websockets';
-import SFLogo from '#/salesforce-logo.png';
+import SFLogo from '~img/salesforce-logo.png';
+import FourOhFour from '~js/components/404';
+import DashboardDetail from '~js/components/dashboard/detail';
+import EpicDetail from '~js/components/epics/detail';
+import ErrorBoundary from '~js/components/error';
+import Footer from '~js/components/footer';
+import Header from '~js/components/header';
+import ProjectDetail from '~js/components/projects/detail';
+import ProjectList from '~js/components/projects/list';
+import TaskDetail from '~js/components/tasks/detail';
+import Terms from '~js/components/terms';
+import AuthError from '~js/components/user/authError';
+import Login from '~js/components/user/login';
+import { PrivateRoute } from '~js/components/utils';
+import initializeI18n from '~js/i18n';
+import reducer from '~js/store';
+import { fetchObjects } from '~js/store/actions';
+import { clearErrors } from '~js/store/errors/actions';
+import { projectsRefreshing } from '~js/store/projects/actions';
+import { selectProjects } from '~js/store/projects/selectors';
+import { clearToasts } from '~js/store/toasts/actions';
+import { login, refetchAllData } from '~js/store/user/actions';
+import { User } from '~js/store/user/reducer';
+import { selectUserState } from '~js/store/user/selectors';
+import { OBJECT_TYPES } from '~js/utils/constants';
+import { log, logError } from '~js/utils/logging';
+import routes, { routePatterns } from '~js/utils/routes';
+import { createSocket } from '~js/utils/websockets';
 
 const App = withRouter(
   ({
@@ -78,7 +78,7 @@ const App = withRouter(
                   <Route
                     exact
                     path={routePatterns.home()}
-                    render={() => <Redirect to={routes.repository_list()} />}
+                    render={() => <Redirect to={routes.project_list()} />}
                   />
                   <PrivateRoute
                     exact
@@ -87,18 +87,18 @@ const App = withRouter(
                   />
                   <PrivateRoute
                     exact
-                    path={routePatterns.repository_list()}
-                    component={RepositoryList}
-                  />
-                  <PrivateRoute
-                    exact
-                    path={routePatterns.repository_detail()}
-                    component={RepositoryDetail}
+                    path={routePatterns.project_list()}
+                    component={ProjectList}
                   />
                   <PrivateRoute
                     exact
                     path={routePatterns.project_detail()}
                     component={ProjectDetail}
+                  />
+                  <PrivateRoute
+                    exact
+                    path={routePatterns.epic_detail()}
+                    component={EpicDetail}
                   />
                   <PrivateRoute
                     exact
@@ -181,7 +181,7 @@ initializeI18n((i18nError?: string) => {
     settings.setAppElement(el);
 
     const renderApp = () => {
-      ReactDOM.render(
+      render(
         <Provider store={appStore}>
           <BrowserRouter>
             <IconSettings
@@ -200,17 +200,17 @@ initializeI18n((i18nError?: string) => {
     };
 
     if (userData) {
-      // If logged in, fetch repositories before rendering App
+      // If logged in, fetch projects before rendering App
       (appStore.dispatch as ThunkDispatch<any, void, AnyAction>)(
-        fetchObjects({ objectType: OBJECT_TYPES.REPOSITORY, reset: true }),
+        fetchObjects({ objectType: OBJECT_TYPES.PROJECT, reset: true }),
       ).finally(() => {
         const state = appStore.getState();
-        const repos = selectRepositories(state);
+        const projects = selectProjects(state);
         const user = selectUserState(state);
-        // If user has no repos and is currently fetching repos, update state
-        // to show spinner instead of empty repos-list.
-        if (user?.currently_fetching_repos && !repos.length) {
-          appStore.dispatch(reposRefreshing());
+        // If user has no projects and is currently fetching projects, update state
+        // to show spinner instead of empty projects-list.
+        if (user?.currently_fetching_repos && !projects.length) {
+          appStore.dispatch(projectsRefreshing());
         }
         renderApp();
       });

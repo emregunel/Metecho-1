@@ -1,8 +1,13 @@
 import '@testing-library/jest-dom/extend-expect';
 
+import settings from '@salesforce/design-system-react/components/settings';
 import fetchMock from 'fetch-mock';
 
+import { api_urls } from '../../src/stories/fixtures';
+import { initI18n } from './utils';
+
 beforeAll(() => {
+  settings.setAppElement(document.documentElement);
   document.createRange = () => ({
     setStart: jest.fn(),
     setEnd: jest.fn(),
@@ -11,39 +16,13 @@ beforeAll(() => {
       ownerDocument: document,
     },
   });
-  window.api_urls = {
-    account_logout: () => '/accounts/logout/',
-    github_login: () => '/accounts/github/login/',
-    salesforce_login: () => '/accounts/salesforce/login/',
-    user: () => '/api/user/',
-    user_refresh: () => '/api/user/refresh/',
-    user_disconnect_sf: () => '/api/user/disconnect/',
-    agree_to_tos: () => '/api/agree_to_tos/',
-    repository_list: () => '/api/repositories/',
-    repository_detail: (slug) => `/api/repositories/${slug}/`,
-    repository_refresh_github_users: (id) =>
-      `/api/repositories/${id}/refresh_github_users/`,
-    project_list: () => '/api/projects/',
-    scratch_org_list: () => '/api/scratch_orgs/',
-    scratch_org_detail: (id) => `/api/scratch_orgs/${id}/`,
-    scratch_org_commit: (id) => `/api/scratch_orgs/${id}/commit/`,
-    scratch_org_redirect: (id) => `/api/scratch_orgs/${id}/redirect/`,
-    scratch_org_refresh: (id) => `/api/scratch_orgs/${id}/refresh/`,
-    task_detail: (id) => `/api/tasks/${id}/`,
-    task_create_pr: (id) => `/api/tasks/${id}/create_pr/`,
-    task_review: (id) => `/api/tasks/${id}/review/`,
-    task_can_reassign: (id) => `/api/tasks/${id}/can_reassign/`,
-    project_detail: (id) => `/api/projects/${id}/`,
-    project_create_pr: (id) => `/api/projects/${id}/create_pr/`,
-    project_refresh_org_config_names: (id) =>
-      `/api/projects/${id}/refresh_org_config_names/`,
-    repository_feature_branches: (id) =>
-      `/api/repositories/${id}/feature_branches/`,
-  };
+  window.api_urls = api_urls;
   window.GLOBALS = {};
+  window.open = jest.fn();
   window.console.error = jest.fn();
   window.console.warn = jest.fn();
   window.console.info = jest.fn();
+  initI18n();
 });
 
-afterEach(fetchMock.reset);
+afterEach(() => fetchMock.reset());

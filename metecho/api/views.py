@@ -1,11 +1,11 @@
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
-from django.db.models import Case, IntegerField, When
+from django.db.models import Case, IntegerField, Q, When
 from django.http import HttpResponseRedirect
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
-from github3.exceptions import ResponseError
+from github3.exceptions import ConnectionError, ResponseError
 from rest_framework import generics, mixins, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -16,29 +16,22 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from . import gh
 from .authentication import GitHubHookAuthentication
-from .filters import ProjectFilter, RepositoryFilter, ScratchOrgFilter, TaskFilter
+from .filters import EpicFilter, ProjectFilter, ScratchOrgFilter, TaskFilter
 from .hook_serializers import (
     PrHookSerializer,
     PrReviewHookSerializer,
     PushHookSerializer,
 )
-from .models import (
-    PROJECT_STATUSES,
-    SCRATCH_ORG_TYPES,
-    Project,
-    Repository,
-    ScratchOrg,
-    Task,
-)
+from .models import EPIC_STATUSES, SCRATCH_ORG_TYPES, Epic, Project, ScratchOrg, Task
 from .paginators import CustomPaginator
 from .serializers import (
     CanReassignSerializer,
     CommitSerializer,
     CreatePrSerializer,
+    EpicSerializer,
     FullUserSerializer,
     MinimalUserSerializer,
     ProjectSerializer,
-    RepositorySerializer,
     ReviewSerializer,
     ScratchOrgSerializer,
     TaskSerializer,
@@ -147,26 +140,24 @@ class UserViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin, GenericViewS
     queryset = User.objects.all()
 
 
-class RepositoryViewSet(
-    mixins.RetrieveModelMixin, mixins.ListModelMixin, GenericViewSet
-):
+class ProjectViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin, GenericViewSet):
     permission_classes = (IsAuthenticated,)
-    serializer_class = RepositorySerializer
+    serializer_class = ProjectSerializer
     filter_backends = (DjangoFilterBackend,)
-    filterset_class = RepositoryFilter
+    filterset_class = ProjectFilter
     pagination_class = CustomPaginator
-    model = Repository
+    model = Project
 
     def get_queryset(self):
         repo_ids = self.request.user.repositories.values_list("repo_id", flat=True)
 
-        for repo in Repository.objects.filter(repo_id__isnull=True):
+        for project in Project.objects.filter(repo_id__isnull=True):
             try:
-                repo.get_repo_id(self.request.user)
-            except ResponseError:
+                project.get_repo_id()
+            except (ResponseError, ConnectionError):
                 pass
 
-        return Repository.objects.filter(repo_id__isnull=False, repo_id__in=repo_ids)
+        return Project.objects.filter(repo_id__isnull=False, repo_id__in=repo_ids)
 
     @action(detail=True, methods=["POST"])
     def refresh_github_users(self, request, pk=None):
@@ -174,14 +165,22 @@ class RepositoryViewSet(
         instance.queue_populate_github_users(originating_user_id=str(request.user.id))
         return Response(status=status.HTTP_202_ACCEPTED)
 
+    @action(detail=True, methods=["POST"])
+    def refresh_org_config_names(self, request, pk=None):
+        project = self.get_object()
+        project.queue_available_org_config_names(user=request.user)
+        return Response(
+            self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED
+        )
+
     @action(detail=True, methods=["GET"])
     def feature_branches(self, request, pk=None):
         instance = self.get_object()
         repo = gh.get_repo_info(
-            request.user, repo_id=instance.get_repo_id(request.user)
+            None, repo_owner=instance.repo_owner, repo_name=instance.repo_name
         )
         existing_branches = set(
-            Project.objects.active()
+            Epic.objects.active()
             .exclude(branch_name="")
             .values_list("branch_name", flat=True)
         )
@@ -197,33 +196,25 @@ class RepositoryViewSet(
         return Response(data)
 
 
-class ProjectViewSet(CreatePrMixin, ModelViewSet):
+class EpicViewSet(CreatePrMixin, ModelViewSet):
     permission_classes = (IsAuthenticated,)
-    serializer_class = ProjectSerializer
+    serializer_class = EpicSerializer
     pagination_class = CustomPaginator
-    queryset = Project.objects.active()
+    queryset = Epic.objects.active()
     filter_backends = (DjangoFilterBackend,)
-    filterset_class = ProjectFilter
-    error_pr_exists = _("Project has already been submitted for testing.")
+    filterset_class = EpicFilter
+    error_pr_exists = _("Epic has already been submitted for testing.")
 
     def get_queryset(self):
         qs = super().get_queryset()
         whens = [
-            When(status=PROJECT_STATUSES.Review, then=0),
-            When(status=PROJECT_STATUSES["In progress"], then=1),
-            When(status=PROJECT_STATUSES.Planned, then=2),
-            When(status=PROJECT_STATUSES.Merged, then=3),
+            When(status=EPIC_STATUSES.Review, then=0),
+            When(status=EPIC_STATUSES["In progress"], then=1),
+            When(status=EPIC_STATUSES.Planned, then=2),
+            When(status=EPIC_STATUSES.Merged, then=3),
         ]
         return qs.annotate(ordering=Case(*whens, output_field=IntegerField())).order_by(
             "ordering", "-created_at", "name"
-        )
-
-    @action(detail=True, methods=["POST"])
-    def refresh_org_config_names(self, request, pk=None):
-        project = self.get_object()
-        project.queue_available_task_org_config_names(request.user)
-        return Response(
-            self.get_serializer(project).data, status=status.HTTP_202_ACCEPTED
         )
 
 
@@ -267,7 +258,7 @@ class TaskViewSet(CreatePrMixin, ModelViewSet):
             "assigned_dev": SCRATCH_ORG_TYPES.Dev,
         }.get(role, None)
         gh_uid = serializer.validated_data["gh_uid"]
-        org = task.scratchorg_set.active().filter(org_type=role_org_type).first()
+        org = task.orgs.active().filter(org_type=role_org_type).first()
         new_user = getattr(
             SocialAccount.objects.filter(provider="github", uid=gh_uid).first(),
             "user",
@@ -329,13 +320,17 @@ class ScratchOrgViewSet(
         # XXX: This method is copied verbatim from
         # rest_framework.mixins.RetrieveModelMixin, because I needed to
         # insert the get_unsaved_changes line in the middle.
-        queryset = self.filter_queryset(self.get_queryset())
+        queryset = self.filter_queryset(
+            self.get_queryset().exclude(
+                ~Q(owner=request.user), org_type=SCRATCH_ORG_TYPES.Playground
+            )
+        )
 
         force_get = request.query_params.get("get_unsaved_changes", False)
         # XXX: I am apprehensive about the possibility of flooding the
         # worker queues easily this way:
         filters = {
-            "org_type": SCRATCH_ORG_TYPES.Dev,
+            "org_type__in": [SCRATCH_ORG_TYPES.Dev, SCRATCH_ORG_TYPES.Playground],
             "delete_queued_at__isnull": True,
             "currently_capturing_changes": False,
             "currently_refreshing_changes": False,
@@ -359,9 +354,17 @@ class ScratchOrgViewSet(
         # change: we needed to insert the get_unsaved_changes line in
         # the middle.
         instance = self.get_object()
+        if (
+            instance.org_type == SCRATCH_ORG_TYPES.Playground
+            and not request.user == instance.owner
+        ):
+            return Response(
+                {"error": _("Requesting user did not create scratch org.")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         force_get = request.query_params.get("get_unsaved_changes", False)
         conditions = [
-            instance.org_type == SCRATCH_ORG_TYPES.Dev,
+            instance.org_type in [SCRATCH_ORG_TYPES.Dev, SCRATCH_ORG_TYPES.Playground],
             instance.is_created,
             instance.delete_queued_at is None,
             not instance.currently_capturing_changes,

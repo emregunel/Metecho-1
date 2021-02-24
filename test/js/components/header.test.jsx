@@ -1,7 +1,7 @@
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import Header from '@/components/header';
+import Header from '~js/components/header';
 
 import { renderWithRedux } from './../utils';
 
@@ -31,7 +31,7 @@ describe('<Header />', () => {
     test('renders nothing', () => {
       const { container } = setup({ user: null, socket: true });
 
-      expect(container).toBeEmpty();
+      expect(container).toBeEmptyDOMElement();
     });
   });
 

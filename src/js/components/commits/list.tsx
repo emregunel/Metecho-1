@@ -5,13 +5,15 @@ import DataTableColumn from '@salesforce/design-system-react/components/data-tab
 import classNames from 'classnames';
 import { format, formatDistanceToNow } from 'date-fns';
 import i18n from 'i18next';
-import React from 'react';
+import React, { ReactNode } from 'react';
 
-import { ExternalLink } from '@/components/utils';
-import { Commit } from '@/store/tasks/reducer';
+import { ExternalLink } from '~js/components/utils';
+import { Commit } from '~js/store/tasks/reducer';
 
 interface TableCellProps {
   [key: string]: any;
+  className?: string;
+  children?: ReactNode;
   item?: Commit;
 }
 
@@ -50,7 +52,7 @@ const AuthorTableCell = ({ item, className, ...props }: TableCellProps) => {
       className={classNames(className, 'commits-author')}
     >
       <Avatar
-        imgAlt={`${i18n.t('avatar for user')} ${author}`}
+        imgAlt={i18n.t('avatar for user {{username}}', { username: author })}
         imgSrc={item.author.avatar_url}
         title={author}
         size="small"

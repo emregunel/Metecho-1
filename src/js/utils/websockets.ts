@@ -1,12 +1,19 @@
 import { ThunkDispatch } from 'redux-thunk';
 import Sockette from 'sockette';
 
-import { removeObject } from '@/store/actions';
+import { removeObject } from '~js/store/actions';
+import {
+  createEpicPR,
+  createEpicPRFailed,
+  updateEpic,
+} from '~js/store/epics/actions';
+import { Epic } from '~js/store/epics/reducer';
 import {
   commitFailed,
   commitSucceeded,
   deleteFailed,
   deleteOrg,
+  orgProvisioning,
   orgReassigned,
   orgReassignFailed,
   orgRefreshed,
@@ -16,35 +23,29 @@ import {
   refreshError,
   updateFailed,
   updateOrg,
-} from '@/store/orgs/actions';
-import { MinimalOrg, Org } from '@/store/orgs/reducer';
+} from '~js/store/orgs/actions';
+import { MinimalOrg, Org } from '~js/store/orgs/reducer';
 import {
-  createProjectPR,
-  createProjectPRFailed,
+  projectError,
+  projectsRefreshed,
   updateProject,
-} from '@/store/projects/actions';
-import { Project } from '@/store/projects/reducer';
-import {
-  repoError,
-  reposRefreshed,
-  updateRepo,
-} from '@/store/repositories/actions';
-import { Repository } from '@/store/repositories/reducer';
-import { connectSocket, disconnectSocket } from '@/store/socket/actions';
+} from '~js/store/projects/actions';
+import { Project } from '~js/store/projects/reducer';
+import { connectSocket, disconnectSocket } from '~js/store/socket/actions';
 import {
   createTaskPR,
   createTaskPRFailed,
   submitReview,
   submitReviewFailed,
   updateTask,
-} from '@/store/tasks/actions';
-import { Task } from '@/store/tasks/reducer';
+} from '~js/store/tasks/actions';
+import { Task } from '~js/store/tasks/reducer';
 import {
   ObjectTypes,
   WEBSOCKET_ACTIONS,
   WebsocketActions,
-} from '@/utils/constants';
-import { log } from '@/utils/logging';
+} from '~js/utils/constants';
+import { log } from '~js/utils/logging';
 
 export interface Socket {
   subscribe: (payload: Subscription) => void;
@@ -69,21 +70,6 @@ interface ErrorEvent {
 interface ReposRefreshedEvent {
   type: 'USER_REPOS_REFRESH';
 }
-interface RepoUpdatedEvent {
-  type: 'REPOSITORY_UPDATE';
-  payload: {
-    model: Repository;
-    originating_user_id: string | null;
-  };
-}
-interface RepoUpdateErrorEvent {
-  type: 'REPOSITORY_UPDATE_ERROR';
-  payload: {
-    message?: string;
-    model: Repository;
-    originating_user_id: string | null;
-  };
-}
 interface ProjectUpdatedEvent {
   type: 'PROJECT_UPDATE';
   payload: {
@@ -91,18 +77,33 @@ interface ProjectUpdatedEvent {
     originating_user_id: string | null;
   };
 }
-interface ProjectCreatePREvent {
-  type: 'PROJECT_CREATE_PR';
+interface ProjectUpdateErrorEvent {
+  type: 'PROJECT_UPDATE_ERROR';
   payload: {
+    message?: string;
     model: Project;
     originating_user_id: string | null;
   };
 }
-interface ProjectCreatePRFailedEvent {
-  type: 'PROJECT_CREATE_PR_FAILED';
+interface EpicUpdatedEvent {
+  type: 'EPIC_UPDATE';
+  payload: {
+    model: Epic;
+    originating_user_id: string | null;
+  };
+}
+interface EpicCreatePREvent {
+  type: 'EPIC_CREATE_PR';
+  payload: {
+    model: Epic;
+    originating_user_id: string | null;
+  };
+}
+interface EpicCreatePRFailedEvent {
+  type: 'EPIC_CREATE_PR_FAILED';
   payload: {
     message?: string;
-    model: Project;
+    model: Epic;
     originating_user_id: string | null;
   };
 }
@@ -140,6 +141,13 @@ interface TaskSubmitReviewFailedEvent {
   payload: {
     message?: string;
     model: Task;
+    originating_user_id: string | null;
+  };
+}
+interface OrgProvisioningEvent {
+  type: 'SCRATCH_ORG_PROVISIONING';
+  payload: {
+    model: Org;
     originating_user_id: string | null;
   };
 }
@@ -251,21 +259,22 @@ interface CommitFailedEvent {
 interface SoftDeletedEvent {
   type: 'SOFT_DELETE';
   payload: {
-    model: Project | Task;
+    model: Epic | Task;
     originating_user_id: null;
   };
 }
 type ModelEvent =
-  | RepoUpdatedEvent
-  | RepoUpdateErrorEvent
   | ProjectUpdatedEvent
-  | ProjectCreatePREvent
-  | ProjectCreatePRFailedEvent
+  | ProjectUpdateErrorEvent
+  | EpicUpdatedEvent
+  | EpicCreatePREvent
+  | EpicCreatePRFailedEvent
   | TaskUpdatedEvent
   | TaskCreatePREvent
   | TaskCreatePRFailedEvent
   | TaskSubmitReviewEvent
   | TaskSubmitReviewFailedEvent
+  | OrgProvisioningEvent
   | OrgProvisionedEvent
   | OrgProvisionFailedEvent
   | OrgUpdatedEvent
@@ -298,17 +307,17 @@ export const getAction = (event: EventType) => {
   }
   switch (event.type) {
     case 'USER_REPOS_REFRESH':
-      return reposRefreshed();
-    case 'REPOSITORY_UPDATE':
-      return hasModel(event) && updateRepo(event.payload.model);
-    case 'REPOSITORY_UPDATE_ERROR':
-      return hasModel(event) && repoError(event.payload);
+      return projectsRefreshed();
     case 'PROJECT_UPDATE':
       return hasModel(event) && updateProject(event.payload.model);
-    case 'PROJECT_CREATE_PR':
-      return hasModel(event) && createProjectPR(event.payload);
-    case 'PROJECT_CREATE_PR_FAILED':
-      return hasModel(event) && createProjectPRFailed(event.payload);
+    case 'PROJECT_UPDATE_ERROR':
+      return hasModel(event) && projectError(event.payload);
+    case 'EPIC_UPDATE':
+      return hasModel(event) && updateEpic(event.payload.model);
+    case 'EPIC_CREATE_PR':
+      return hasModel(event) && createEpicPR(event.payload);
+    case 'EPIC_CREATE_PR_FAILED':
+      return hasModel(event) && createEpicPRFailed(event.payload);
     case 'TASK_UPDATE':
       return hasModel(event) && updateTask(event.payload.model);
     case 'TASK_CREATE_PR':
@@ -319,6 +328,8 @@ export const getAction = (event: EventType) => {
       return hasModel(event) && submitReview(event.payload);
     case 'TASK_SUBMIT_REVIEW_FAILED':
       return hasModel(event) && submitReviewFailed(event.payload);
+    case 'SCRATCH_ORG_PROVISIONING':
+      return hasModel(event) && orgProvisioning(event.payload.model);
     case 'SCRATCH_ORG_PROVISION':
       return hasModel(event) && provisionOrg(event.payload);
     case 'SCRATCH_ORG_PROVISION_FAILED':

@@ -1,11 +1,17 @@
 import Sockette from 'sockette';
 
-import { removeObject } from '@/store/actions';
+import { removeObject } from '~js/store/actions';
+import {
+  createEpicPR,
+  createEpicPRFailed,
+  updateEpic,
+} from '~js/store/epics/actions';
 import {
   commitFailed,
   commitSucceeded,
   deleteFailed,
   deleteOrg,
+  orgProvisioning,
   orgReassigned,
   orgReassignFailed,
   orgRefreshed,
@@ -15,42 +21,38 @@ import {
   refreshError,
   updateFailed,
   updateOrg,
-} from '@/store/orgs/actions';
+} from '~js/store/orgs/actions';
 import {
-  createProjectPR,
-  createProjectPRFailed,
+  projectError,
+  projectsRefreshed,
   updateProject,
-} from '@/store/projects/actions';
-import {
-  repoError,
-  reposRefreshed,
-  updateRepo,
-} from '@/store/repositories/actions';
-import { connectSocket, disconnectSocket } from '@/store/socket/actions';
+} from '~js/store/projects/actions';
+import { connectSocket, disconnectSocket } from '~js/store/socket/actions';
 import {
   createTaskPR,
   createTaskPRFailed,
   submitReview,
   submitReviewFailed,
   updateTask,
-} from '@/store/tasks/actions';
-import * as sockets from '@/utils/websockets';
+} from '~js/store/tasks/actions';
+import * as sockets from '~js/utils/websockets';
 
-jest.mock('@/store/actions');
-jest.mock('@/store/orgs/actions');
-jest.mock('@/store/projects/actions');
-jest.mock('@/store/repositories/actions');
-jest.mock('@/store/tasks/actions');
+jest.mock('~js/store/actions');
+jest.mock('~js/store/orgs/actions');
+jest.mock('~js/store/epics/actions');
+jest.mock('~js/store/projects/actions');
+jest.mock('~js/store/tasks/actions');
 
 const actions = {
   commitFailed,
   commitSucceeded,
-  createProjectPR,
-  createProjectPRFailed,
+  createEpicPR,
+  createEpicPRFailed,
   createTaskPR,
   createTaskPRFailed,
   deleteFailed,
   deleteOrg,
+  orgProvisioning,
   orgReassigned,
   orgReassignFailed,
   orgRefreshed,
@@ -59,14 +61,14 @@ const actions = {
   recreateOrg,
   refreshError,
   removeObject,
-  repoError,
-  reposRefreshed,
+  projectError,
+  projectsRefreshed,
   submitReview,
   submitReviewFailed,
   updateFailed,
   updateOrg,
+  updateEpic,
   updateProject,
-  updateRepo,
   updateTask,
 };
 for (const action of Object.values(actions)) {
@@ -100,16 +102,17 @@ afterEach(() => {
 
 describe('getAction', () => {
   test.each([
-    ['REPOSITORY_UPDATE', 'updateRepo', true],
-    ['REPOSITORY_UPDATE_ERROR', 'repoError', false],
     ['PROJECT_UPDATE', 'updateProject', true],
-    ['PROJECT_CREATE_PR', 'createProjectPR', false],
-    ['PROJECT_CREATE_PR_FAILED', 'createProjectPRFailed', false],
+    ['PROJECT_UPDATE_ERROR', 'projectError', false],
+    ['EPIC_UPDATE', 'updateEpic', true],
+    ['EPIC_CREATE_PR', 'createEpicPR', false],
+    ['EPIC_CREATE_PR_FAILED', 'createEpicPRFailed', false],
     ['TASK_UPDATE', 'updateTask', true],
     ['TASK_CREATE_PR', 'createTaskPR', false],
     ['TASK_CREATE_PR_FAILED', 'createTaskPRFailed', false],
     ['TASK_SUBMIT_REVIEW', 'submitReview', false],
     ['TASK_SUBMIT_REVIEW_FAILED', 'submitReviewFailed', false],
+    ['SCRATCH_ORG_PROVISIONING', 'orgProvisioning', true],
     ['SCRATCH_ORG_PROVISION', 'provisionOrg', false],
     ['SCRATCH_ORG_PROVISION_FAILED', 'provisionFailed', false],
     ['SCRATCH_ORG_UPDATE', 'updateOrg', true],
@@ -135,11 +138,11 @@ describe('getAction', () => {
   });
 
   describe('USER_REPOS_REFRESH', () => {
-    test('calls reposRefreshed', () => {
+    test('calls projectsRefreshed', () => {
       const event = { type: 'USER_REPOS_REFRESH' };
       sockets.getAction(event);
 
-      expect(reposRefreshed).toHaveBeenCalledTimes(1);
+      expect(projectsRefreshed).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -11,7 +11,7 @@
     "csstools.postcss",
     "dbaeumer.vscode-eslint",
     "formulahendry.auto-rename-tag",
-    "lextudio.restructuredtext",
+    "jounqin.vscode-mdx",
     "ms-azuretools.vscode-docker",
     "ms-python.python",
     "ms-python.vscode-pylance",
@@ -26,12 +26,16 @@
     "xabikos.javascriptsnippets"
   ],
   "settings": {
+    "terminal.integrated.shell.linux": null,
     "editor.codeActionsOnSave": {
       "source.fixAll.eslint": true
     },
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "editor.formatOnSave": true,
     "editor.tabSize": 2,
+    "eslint.options": {
+      "extensions": [".js", ".jsx", ".md", ".mdx", ".ts", ".tsx"]
+    },
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
     "files.trimTrailingWhitespace": true,
@@ -46,8 +50,6 @@
     "remote.extensionKind": {
       "ms-azuretools.vscode-docker": "workspace"
     },
-    "restructuredtext.linter.extraArgs": ["--max-line-length 80"],
-    "restructuredtext.confPath": "${workspaceFolder}/docs",
     "[javascript]": {
       "editor.rulers": [80]
     },
@@ -55,6 +57,9 @@
       "editor.rulers": [80]
     },
     "[markdown]": {
+      "editor.rulers": [80]
+    },
+    "[mdx]": {
       "editor.rulers": [80]
     },
     "[html]": {

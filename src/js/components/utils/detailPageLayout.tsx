@@ -4,8 +4,8 @@ import i18n from 'i18next';
 import React, { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
-import { ExternalLink, PageDescription } from '@/components/utils';
-import routes from '@/utils/routes';
+import { ExternalLink, PageDescription } from '~js/components/utils';
+import routes from '~js/utils/routes';
 
 interface Crumb {
   name: string;
@@ -49,7 +49,10 @@ const DetailPageLayout = ({
         icon={
           showHeaderImage ? (
             <div className="metecho-repo-image-header">
-              <img src={image} alt={`${i18n.t('social image for')} ${title}`} />
+              <img
+                src={image}
+                alt={i18n.t('social image for {{title}}', { title })}
+              />
             </div>
           ) : null
         }

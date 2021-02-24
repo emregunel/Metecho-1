@@ -1,18 +1,18 @@
 import i18n from 'i18next';
 import React from 'react';
 
-import Steps from '@/components/steps';
-import { Step } from '@/components/steps/stepsItem';
-import { OrgTypeTracker } from '@/components/tasks/cards';
-import { OrgsByTask } from '@/store/orgs/reducer';
-import { Task } from '@/store/tasks/reducer';
-import { User } from '@/store/user/reducer';
-import { ORG_TYPES, REVIEW_STATUSES } from '@/utils/constants';
-import { getTaskCommits } from '@/utils/helpers';
+import { OrgTypeTracker } from '~js/components/orgs/taskOrgCards';
+import Steps from '~js/components/steps';
+import { Step } from '~js/components/steps/stepsItem';
+import { OrgsByParent } from '~js/store/orgs/reducer';
+import { Task } from '~js/store/tasks/reducer';
+import { User } from '~js/store/user/reducer';
+import { ORG_TYPES, REVIEW_STATUSES } from '~js/utils/constants';
+import { getTaskCommits } from '~js/utils/helpers';
 
 interface TaskStatusStepsProps {
   task: Task;
-  orgs: OrgsByTask;
+  orgs: OrgsByParent;
   user: User;
   isCreatingOrg: OrgTypeTracker;
   handleAction: (step: Step) => void;
@@ -100,8 +100,8 @@ const TaskStatusSteps = ({
     },
     {
       label: devOrgIsCreating
-        ? i18n.t('Creating a Scratch Org for development…')
-        : i18n.t('Create a Scratch Org for development'),
+        ? i18n.t('Creating a Dev Org…')
+        : i18n.t('Create a Dev Org'),
       active: hasDev && !hasDevOrg,
       // Even if no dev is currently assigned and there's no Dev Org,
       // consider this complete if there are commits and no rejected review
@@ -151,8 +151,8 @@ const TaskStatusSteps = ({
     },
     {
       label: testOrgIsCreating
-        ? i18n.t('Creating a Scratch Org for testing…')
-        : i18n.t('Create a Scratch Org for testing'),
+        ? i18n.t('Creating a Test Org…')
+        : i18n.t('Create a Test Org'),
       active: readyForReview && hasTester && !hasTestOrg,
       complete: (hasTester && hasTestOrg) || task.review_valid,
       hidden: testOrgOutOfDate,

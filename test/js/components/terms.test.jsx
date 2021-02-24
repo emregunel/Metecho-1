@@ -2,12 +2,12 @@ import { fireEvent } from '@testing-library/react';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
 
-import Terms from '@/components/terms';
-import { agreeToTerms, logout } from '@/store/user/actions';
+import Terms from '~js/components/terms';
+import { agreeToTerms, logout } from '~js/store/user/actions';
 
 import { renderWithRedux, storeWithThunk } from './../utils';
 
-jest.mock('@/store/user/actions');
+jest.mock('~js/store/user/actions');
 
 agreeToTerms.mockReturnValue(() =>
   Promise.resolve({ type: 'TEST', payload: {} }),
@@ -78,14 +78,16 @@ describe('<Terms/>', () => {
   });
 
   describe('submit buttom', () => {
-    test('PUTs to API', () => {
-      const { getByText } = setup();
+    test('PUTs to API', async () => {
+      const { findByText, getByText } = setup();
 
+      expect.assertions(4);
       expect(getByText('Metecho Terms of Service')).toBeVisible();
       expect(getByText('Resistance is futile.')).toBeVisible();
       expect(getByText('I Agree')).toBeVisible();
 
       fireEvent.click(getByText('I Agree'));
+      await findByText('Saving…');
 
       expect(agreeToTerms).toHaveBeenCalledTimes(1);
     });

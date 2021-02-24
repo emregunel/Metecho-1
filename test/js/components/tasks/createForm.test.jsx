@@ -1,22 +1,22 @@
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import TaskForm from '@/components/tasks/createForm';
-import { createObject } from '@/store/actions';
-import { addError } from '@/store/errors/actions';
-import { refreshOrgConfigs } from '@/store/projects/actions';
+import TaskForm from '~js/components/tasks/createForm';
+import { createObject } from '~js/store/actions';
+import { addError } from '~js/store/errors/actions';
+import { refreshOrgConfigs } from '~js/store/projects/actions';
 
 import { renderWithRedux, storeWithThunk } from './../../utils';
 
-jest.mock('@/store/actions');
-jest.mock('@/store/errors/actions');
-jest.mock('@/store/projects/actions');
+jest.mock('~js/store/actions');
+jest.mock('~js/store/errors/actions');
+jest.mock('~js/store/projects/actions');
 
 createObject.mockReturnValue(() =>
   Promise.resolve({ type: 'TEST', payload: {} }),
 );
-addError.mockReturnValue({ type: 'TEST' });
+addError.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
 refreshOrgConfigs.mockReturnValue(() => Promise.resolve({ type: 'TEST' }));
 
 afterEach(() => {
@@ -31,30 +31,34 @@ const defaultProject = {
   slug: 'project-1',
   old_slugs: [],
   description: 'This is a test project.',
-  available_task_org_config_names: [
+  org_config_names: [
     { key: 'dev' },
     { key: 'qa', label: 'QA', description: 'This is a QA flow' },
     { key: 'release', description: 'This is a Release flow' },
   ],
 };
 
+const defaultEpic = {
+  id: 'e1',
+  name: 'Epic 1',
+  slug: 'epic-1',
+  project: 'p1',
+  old_slugs: [],
+  description: 'This is a test epic.',
+};
+
 describe('<TaskForm/>', () => {
   const setup = (options) => {
     const defaults = {
       project: defaultProject,
+      epic: defaultEpic,
       isOpen: true,
       closeCreateModal: jest.fn(),
     };
     const opts = Object.assign({}, defaults, options);
-    const { project, isOpen } = opts;
-    const closeCreateModal = jest.fn();
     return renderWithRedux(
       <MemoryRouter>
-        <TaskForm
-          project={project}
-          isOpen={isOpen}
-          closeCreateModal={closeCreateModal}
-        />
+        <TaskForm {...opts} />
       </MemoryRouter>,
       {},
       storeWithThunk,
@@ -72,7 +76,7 @@ describe('<TaskForm/>', () => {
   });
 
   describe('add a single task', () => {
-    test('calls createObject with data', () => {
+    test('calls createObject with data', async () => {
       const { getByText, getByLabelText } = setup();
       const submit = getByText('Add');
       const nameInput = getByLabelText('*Task Name');
@@ -85,17 +89,20 @@ describe('<TaskForm/>', () => {
       fireEvent.click(radioInput);
       fireEvent.click(submit);
 
-      expect(createObject).toHaveBeenCalledWith({
-        objectType: 'task',
-        data: {
-          name: 'Name of Task',
-          description: 'This is the description',
-          project: 'p1',
-          org_config_name: 'qa',
-        },
-        hasForm: true,
-        shouldSubscribeToObject: true,
-      });
+      expect.assertions(1);
+      await waitFor(() =>
+        expect(createObject).toHaveBeenCalledWith({
+          objectType: 'task',
+          data: {
+            name: 'Name of Task',
+            description: 'This is the description',
+            epic: 'e1',
+            org_config_name: 'qa',
+          },
+          hasForm: true,
+          shouldSubscribeToObject: true,
+        }),
+      );
     });
 
     describe('error', () => {
@@ -112,7 +119,7 @@ describe('<TaskForm/>', () => {
           }),
         );
         const { getByText, getByLabelText, findByText } = setup({
-          project: { ...defaultProject, available_task_org_config_names: [] },
+          epic: { ...defaultEpic, org_config_names: [] },
         });
 
         const submit = getByText('Add');
@@ -142,25 +149,26 @@ describe('<TaskForm/>', () => {
                 slug: 'name-of-task',
                 name: 'Name of Task',
                 description: '',
-                project: 'p1',
+                epic: 'e1',
               },
             },
           }),
         );
-        const { getByText, getByLabelText, queryByText } = setup();
+        const { findByText, getByText, getByLabelText, queryByText } = setup();
         const submit = getByText('Add & New');
         const nameInput = getByLabelText('*Task Name');
         fireEvent.change(nameInput, { target: { value: 'Name of Task' } });
         fireEvent.click(submit);
 
-        expect.assertions(2);
-        await createObject;
+        expect.assertions(1);
+        await findByText('A task was successfully added.');
 
-        expect(getByText('A task was successfully added.')).toBeVisible();
-
-        jest.runAllTimers();
-
-        expect(queryByText('A task was successfully added.')).toBeNull();
+        await waitFor(() => {
+          jest.runAllTimers();
+          return expect(
+            queryByText('A task was successfully added.'),
+          ).toBeNull();
+        });
       });
     });
   });

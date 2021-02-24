@@ -2,12 +2,12 @@ import { fireEvent } from '@testing-library/react';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
 
-import Toasts from '@/components/toasts';
-import { removeToast } from '@/store/toasts/actions';
+import Toasts from '~js/components/toasts';
+import { removeToast } from '~js/store/toasts/actions';
 
 import { renderWithRedux } from './../utils';
 
-jest.mock('@/store/toasts/actions');
+jest.mock('~js/store/toasts/actions');
 
 removeToast.mockReturnValue({ type: 'TEST' });
 
@@ -48,7 +48,6 @@ describe('<Toasts />', () => {
       const { getByText } = setup({
         toasts: [{ ...defaultToast, openLinkInNewWindow: true }],
       });
-      jest.spyOn(window, 'open');
       fireEvent.click(getByText('open link'));
 
       expect(window.open).toHaveBeenCalledWith('/test/url/', '_blank');
@@ -58,7 +57,6 @@ describe('<Toasts />', () => {
       const { getByText } = setup({
         toasts: [{ ...defaultToast, openLinkInNewWindow: true, linkUrl: '' }],
       });
-      jest.spyOn(window, 'open');
       fireEvent.click(getByText('open link'));
 
       expect(window.open).not.toHaveBeenCalled();

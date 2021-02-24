@@ -1,30 +1,25 @@
 import { RouteComponentProps } from 'react-router-dom';
 import { createSelector } from 'reselect';
 
-import { AppState } from '@/store';
-import {
-  Project,
-  ProjectsByRepositoryState,
-  ProjectsState,
-} from '@/store/projects/reducer';
-import { Repository } from '@/store/repositories/reducer';
-import { selectRepository } from '@/store/repositories/selectors';
+import { AppState } from '~js/store';
+import { Project, ProjectsState } from '~js/store/projects/reducer';
 
-export const selectProjectState = (appState: AppState): ProjectsState =>
+export const selectProjectsState = (appState: AppState): ProjectsState =>
   appState.projects;
 
-export const selectProjectsByRepository = createSelector(
-  [selectProjectState, selectRepository],
-  (
-    projects: ProjectsState,
-    repository?: Repository | null,
-  ): ProjectsByRepositoryState | undefined => {
-    /* istanbul ignore else */
-    if (repository) {
-      return projects[repository.id];
-    }
-    return undefined;
-  },
+export const selectProjects = createSelector(
+  selectProjectsState,
+  (projects: ProjectsState): Project[] => projects.projects,
+);
+
+export const selectProjectsRefreshing = createSelector(
+  selectProjectsState,
+  (projects: ProjectsState): boolean => projects.refreshing,
+);
+
+export const selectNextUrl = createSelector(
+  selectProjectsState,
+  (projects: ProjectsState): string | null => projects.next,
 );
 
 export const selectProjectSlug = (
@@ -33,19 +28,19 @@ export const selectProjectSlug = (
 ) => params.projectSlug;
 
 export const selectProjectNotFound = createSelector(
-  [selectProjectsByRepository, selectProjectSlug],
+  [selectProjectsState, selectProjectSlug],
   (projects, projectSlug): boolean =>
-    Boolean(projectSlug && projects?.notFound.includes(projectSlug)),
+    Boolean(projectSlug && projects.notFound.includes(projectSlug)),
 );
 
 export const selectProject = createSelector(
-  [selectProjectsByRepository, selectProjectSlug, selectProjectNotFound],
+  [selectProjects, selectProjectSlug, selectProjectNotFound],
   (projects, projectSlug, notFound): Project | null | undefined => {
-    if (!projectSlug || !projects) {
+    if (!projectSlug) {
       return undefined;
     }
-    const project = projects.projects.find(
-      (p) => p.slug === projectSlug || p.old_slugs.includes(projectSlug),
+    const project = projects.find(
+      (r) => r.slug === projectSlug || r.old_slugs.includes(projectSlug),
     );
     if (project) {
       return project;
@@ -53,3 +48,11 @@ export const selectProject = createSelector(
     return notFound ? null : undefined;
   },
 );
+
+export const selectProjectById = (
+  appState: AppState,
+  id?: string | null,
+): Project | undefined =>
+  Object.values(appState.projects.projects)
+    .flat()
+    .find((p) => p.id === id);

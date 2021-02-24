@@ -1,7 +1,8 @@
-import { render } from '@testing-library/react';
 import React from 'react';
 
-import CommitList from '@/components/commits/list';
+import CommitList from '~js/components/commits/list';
+
+import { render } from './../../utils';
 
 describe('<CommitList/>', () => {
   test('renders a table of commits', () => {
@@ -50,6 +51,6 @@ describe('<CommitList/>', () => {
   test('does not render if list is empty', () => {
     const { container } = render(<CommitList commits={[]} />);
 
-    expect(container).toBeEmpty();
+    expect(container).toBeEmptyDOMElement();
   });
 });
