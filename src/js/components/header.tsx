@@ -2,7 +2,7 @@ import PageHeader from '@salesforce/design-system-react/components/page-header';
 import PageHeaderControl from '@salesforce/design-system-react/components/page-header/control';
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 
 import Errors from '~js/components/apiErrors';
 import OfflineAlert from '~js/components/offlineAlert';
@@ -13,7 +13,6 @@ import { selectUserState } from '~js/store/user/selectors';
 import routes from '~js/utils/routes';
 
 const Header = () => {
-  const location = useLocation();
   const user = useSelector(selectUserState);
   const socket = useSelector(selectSocketState);
 
@@ -31,11 +30,11 @@ const Header = () => {
         </li>
         <li>
           <NavLink
-            to={routes.repository_list()}
+            to={routes.project_list()}
             activeClassName="slds-text-link"
             className="slds-m-right_x-large slds-text-link_reset"
           >
-            Repositories
+            Projects
           </NavLink>
         </li>
       </ul>
