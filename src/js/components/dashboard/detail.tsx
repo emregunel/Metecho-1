@@ -7,6 +7,8 @@ const Dashboard = () =>
     slds-brand-band_user
     dashboard-header"
   >
+    {/* TODO slds-brand-band_user 404 bg image from Salesforce UX package */}
+    {/* TODO - make this larger and not a button */}
     <UserInfo />
   </div>
 ;
