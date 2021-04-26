@@ -8,8 +8,6 @@ import TaskOrgCards, {
 } from '~js/components/orgs/taskOrgCards';
 import { deleteObject, updateObject } from '~js/store/actions';
 import { refetchOrg } from '~js/store/orgs/actions';
-import { addUrlParams } from '~js/utils/api';
-import { SHOW_EPIC_COLLABORATORS } from '~js/utils/constants';
 
 import {
   renderWithRedux,
@@ -43,6 +41,7 @@ const defaultOrgs = {
     org_type: 'Dev',
     owner: 'user-id',
     owner_gh_username: 'user-name',
+    owner_gh_id: 'user-id',
     expires_at: '2019-09-16T12:58:53.721Z',
     latest_commit: '617a512-longlong',
     latest_commit_url: '/test/commit/url/',
@@ -58,27 +57,40 @@ const defaultOrgs = {
   },
   QA: null,
 };
+const defaultEpicUsers = [
+  {
+    id: 'user-id',
+    login: 'user-name',
+    name: 'Full User Name',
+    permissions: { push: true },
+  },
+  { id: 'other-user-id', login: 'other-user', permissions: { push: true } },
+];
+const defaultProject = {
+  id: 'p1',
+  github_users: [...defaultEpicUsers],
+};
 const defaultState = {
   user: {
     id: 'user-id',
+    github_id: 'user-id',
     username: 'user-name',
     valid_token_for: 'sf-org',
     is_devhub_enabled: true,
   },
+  projects: {
+    projects: [defaultProject],
+  },
 };
 const defaultTask = {
   id: 'task-id',
-  assigned_dev: { id: 'user-id', login: 'user-name' },
-  assigned_qa: { id: 'user-id', login: 'user-name' },
+  assigned_dev: 'user-id',
+  assigned_qa: 'user-id',
   commits: [{ id: '617a512-longlong' }, { id: 'other' }],
   origin_sha: 'parent',
   review_submitted_at: '2019-10-16T12:58:53.721Z',
   has_unmerged_commits: true,
 };
-const defaultEpicUsers = [
-  { id: 'user-id', login: 'user-name' },
-  { id: 'other-user', login: 'other-user' },
-];
 const createOrg = jest.fn();
 const refreshOrg = jest.fn();
 
@@ -88,7 +100,9 @@ describe('<TaskOrgCards/>', () => {
       initialState: defaultState,
       orgs: defaultOrgs,
       task: defaultTask,
+      userHasPermissions: true,
       epicUsers: defaultEpicUsers,
+      githubUsers: defaultEpicUsers,
       assignUserModalOpen: null,
       isCreatingOrg: ORG_TYPE_TRACKER_DEFAULT,
       testOrgReadyForReview: false,
@@ -102,7 +116,10 @@ describe('<TaskOrgCards/>', () => {
         <TaskOrgCards
           orgs={opts.orgs}
           task={opts.task}
+          projectId={defaultProject.id}
+          userHasPermissions={opts.userHasPermissions}
           epicUsers={opts.epicUsers}
+          githubUsers={opts.githubUsers}
           epicUrl="epic-url"
           assignUserModalOpen={opts.assignUserModalOpen}
           isCreatingOrg={opts.isCreatingOrg}
@@ -182,6 +199,7 @@ describe('<TaskOrgCards/>', () => {
           ...defaultOrgs.Dev,
           owner: 'other-user-id',
           owner_gh_username: 'other-user',
+          owner_gh_id: 'other-user-id',
           unsaved_changes: {},
           total_unsaved_changes: 0,
           has_unsaved_changes: false,
@@ -189,12 +207,8 @@ describe('<TaskOrgCards/>', () => {
       };
       const task = {
         ...defaultTask,
-        assigned_dev: {
-          login: 'other-user',
-        },
-        assigned_qa: {
-          login: 'other-user',
-        },
+        assigned_dev: 'other-user-id',
+        assigned_qa: 'other-user-id',
       };
       const { queryByText, getByText } = setup({ orgs, task });
 
@@ -211,8 +225,9 @@ describe('<TaskOrgCards/>', () => {
         ...defaultOrgs,
         Dev: {
           ...defaultOrgs.Dev,
-          owner: 'other-user',
+          owner: 'other-user-id',
           owner_gh_username: 'other-user',
+          owner_gh_id: 'other-user-id',
         },
       };
       const { queryByText, getByText } = setup({ orgs });
@@ -223,7 +238,7 @@ describe('<TaskOrgCards/>', () => {
   });
 
   describe('Assign click', () => {
-    test('updates assigned user', async () => {
+    test('updates assigned user', () => {
       const task = {
         ...defaultTask,
         assigned_dev: null,
@@ -233,39 +248,20 @@ describe('<TaskOrgCards/>', () => {
         orgs: {},
         assignUserModalOpen: 'Dev',
       });
-
-      expect.assertions(3);
-      await fireEvent.click(
-        baseElement.querySelector('.collaborator-button[title="user-name"]'),
+      fireEvent.click(
+        baseElement.querySelector(
+          '.collaborator-button[title="Full User Name (user-name)"]',
+        ),
       );
-      await fireEvent.click(getByText('Notify Assigned Developer by Email'));
-      await fireEvent.click(getByText('Save'));
+      fireEvent.click(getByText('Notify Assigned Developer by Email'));
+      fireEvent.click(getByText('Save'));
 
       expect(updateObject).toHaveBeenCalled();
 
       const data = updateObject.mock.calls[0][0].data;
 
-      expect(data.assigned_dev.login).toEqual('user-name');
+      expect(data.assigned_dev).toEqual('user-id');
       expect(data.should_alert_dev).toBe(true);
-    });
-
-    test('redirects to epic-detail if no users to assign', () => {
-      const task = {
-        ...defaultTask,
-        assigned_dev: null,
-      };
-      const epicUsers = [];
-      const { getByText, context } = setup({
-        task,
-        epicUsers,
-        assignUserModalOpen: 'Dev',
-      });
-      fireEvent.click(getByText('View Epic to Add Collaborators'));
-
-      expect(context.action).toEqual('PUSH');
-      expect(context.url).toEqual(
-        addUrlParams('epic-url', { [SHOW_EPIC_COLLABORATORS]: true }),
-      );
     });
   });
 
@@ -284,8 +280,8 @@ describe('<TaskOrgCards/>', () => {
       fireEvent.click(getByText('Save'));
 
       expect(updateObject).toHaveBeenCalled();
-      expect(updateObject.mock.calls[0][0].data.assigned_qa.login).toEqual(
-        'other-user',
+      expect(updateObject.mock.calls[0][0].data.assigned_qa).toEqual(
+        'other-user-id',
       );
     });
   });
@@ -321,8 +317,8 @@ describe('<TaskOrgCards/>', () => {
           fireEvent.click(getByText('Confirm'));
 
           expect(updateObject).toHaveBeenCalledTimes(1);
-          expect(updateObject.mock.calls[0][0].data.assigned_dev.login).toEqual(
-            'other-user',
+          expect(updateObject.mock.calls[0][0].data.assigned_dev).toEqual(
+            'other-user-id',
           );
         });
       });
@@ -345,8 +341,8 @@ describe('<TaskOrgCards/>', () => {
 
           expect(refetchOrg).not.toHaveBeenCalled();
           expect(updateObject).toHaveBeenCalledTimes(1);
-          expect(updateObject.mock.calls[0][0].data.assigned_dev.login).toEqual(
-            'other-user',
+          expect(updateObject.mock.calls[0][0].data.assigned_dev).toEqual(
+            'other-user-id',
           );
         });
       });
@@ -426,8 +422,8 @@ describe('<TaskOrgCards/>', () => {
 
         describe('"cancel" click', () => {
           test('closes modal', () => {
-            const { getByText, queryByText } = result;
-            fireEvent.click(getByText('Cancel'));
+            const { getByTitle, queryByText } = result;
+            fireEvent.click(getByTitle('Cancel'));
 
             expect(
               queryByText('Confirm Removing Developer and Deleting Dev Org'),
@@ -711,6 +707,7 @@ describe('<TaskOrgCards/>', () => {
       test('creates a new org', () => {
         const { getByText } = setup({
           initialState: {
+            ...defaultState,
             user: {
               ...defaultState.user,
               valid_token_for: null,
@@ -728,6 +725,7 @@ describe('<TaskOrgCards/>', () => {
       test('opens connect modal', () => {
         const { getByText } = setup({
           initialState: {
+            ...defaultState,
             user: { ...defaultState.user, valid_token_for: null },
           },
         });
@@ -742,6 +740,7 @@ describe('<TaskOrgCards/>', () => {
       test('opens warning modal', () => {
         const { getByText } = setup({
           initialState: {
+            ...defaultState,
             user: { ...defaultState.user, is_devhub_enabled: false },
           },
         });
@@ -800,9 +799,7 @@ describe('<TaskOrgCards/>', () => {
       test('deletes org', async () => {
         const task = {
           ...defaultTask,
-          assigned_qa: {
-            login: 'other-user',
-          },
+          assigned_qa: 'other-user-id',
         };
         const orgs = {
           Dev: null,
@@ -885,8 +882,8 @@ describe('<TaskOrgCards/>', () => {
 
           describe('"cancel" click', () => {
             test('closes modal', () => {
-              const { getByText, queryByText } = result;
-              fireEvent.click(getByText('Cancel'));
+              const { getByTitle, queryByText } = result;
+              fireEvent.click(getByTitle('Cancel'));
 
               expect(
                 queryByText('Confirm Deleting Org With Unretrieved Changes'),
@@ -897,7 +894,7 @@ describe('<TaskOrgCards/>', () => {
           describe('"delete" click', () => {
             test('deletes org', async () => {
               const { findByText, getByText, queryByText } = result;
-              fireEvent.click(getByText('Delete'));
+              fireEvent.click(getByText('Delete Org'));
 
               expect.assertions(4);
               await findByText('Deleting Org…');

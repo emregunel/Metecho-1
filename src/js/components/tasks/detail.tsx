@@ -15,6 +15,7 @@ import { Redirect, RouteComponentProps } from 'react-router-dom';
 import FourOhFour from '~js/components/404';
 import CommitList from '~js/components/commits/list';
 import SubmitReviewModal from '~js/components/orgs/cards/submitReview';
+import PlaygroundOrgCard from '~js/components/orgs/playgroundCard';
 import TaskOrgCards, {
   ORG_TYPE_TRACKER_DEFAULT,
   OrgTypeTracker,
@@ -24,6 +25,7 @@ import CaptureModal from '~js/components/tasks/capture';
 import TaskStatusPath from '~js/components/tasks/path';
 import TaskStatusSteps from '~js/components/tasks/steps';
 import {
+  CreateOrgModal,
   DeleteModal,
   DetailPageLayout,
   EditModal,
@@ -45,6 +47,7 @@ import { AppState, ThunkDispatch } from '~js/store';
 import { createObject } from '~js/store/actions';
 import { refetchOrg, refreshOrg } from '~js/store/orgs/actions';
 import { Org, OrgsByParent } from '~js/store/orgs/reducer';
+import { selectProjectCollaborator } from '~js/store/projects/selectors';
 import { selectTask, selectTaskSlug } from '~js/store/tasks/selectors';
 import { User } from '~js/store/user/reducer';
 import { selectUserState } from '~js/store/user/selectors';
@@ -65,6 +68,7 @@ const TaskDetail = (props: RouteComponentProps) => {
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [createOrgModalOpen, setCreateOrgModalOpen] = useState(false);
   const [
     assignUserModalOpen,
     setAssignUserModalOpen,
@@ -76,7 +80,10 @@ const TaskDetail = (props: RouteComponentProps) => {
   const isMounted = useIsMounted();
 
   const { project, projectSlug } = useFetchProjectIfMissing(props);
-  const { epic, epicSlug } = useFetchEpicIfMissing(project, props);
+  const { epic, epicSlug, epicCollaborators } = useFetchEpicIfMissing(
+    project,
+    props,
+  );
   const dispatch = useDispatch<ThunkDispatch>();
   useFetchTasksIfMissing(epic, props);
   const selectTaskWithProps = useCallback(selectTask, []);
@@ -89,17 +96,16 @@ const TaskDetail = (props: RouteComponentProps) => {
   );
   const { orgs } = useFetchOrgsIfMissing({ task, props });
   const user = useSelector(selectUserState) as User;
+  const qaUser = useSelector((state: AppState) =>
+    selectProjectCollaborator(state, project?.id, task?.assigned_qa),
+  );
 
   const readyToSubmit = Boolean(
     task?.has_unmerged_commits && !task?.pr_is_open,
   );
   const currentlySubmitting = Boolean(task?.currently_creating_pr);
-  const userIsAssignedDev = Boolean(
-    user.username === task?.assigned_dev?.login,
-  );
-  const userIsAssignedTester = Boolean(
-    user.username === task?.assigned_qa?.login,
-  );
+  const userIsAssignedDev = Boolean(user.github_id === task?.assigned_dev);
+  const userIsAssignedTester = Boolean(user.github_id === task?.assigned_qa);
   const hasReviewRejected = Boolean(
     task?.review_valid &&
       task?.review_status === REVIEW_STATUSES.CHANGES_REQUESTED,
@@ -112,6 +118,7 @@ const TaskDetail = (props: RouteComponentProps) => {
   let userIsTestOwner = false;
   let devOrg: Org | null | undefined,
     testOrg: Org | null | undefined,
+    playgroundOrg: Org | null | undefined,
     taskOrgs: OrgsByParent | undefined;
   let hasOrgs = false;
   let testOrgSubmittingReview = false;
@@ -130,6 +137,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     };
     devOrg = taskOrgs[ORG_TYPES.DEV];
     testOrg = taskOrgs[ORG_TYPES.QA];
+    playgroundOrg = taskOrgs[ORG_TYPES.PLAYGROUND];
     orgHasChanges =
       (devOrg?.total_unsaved_changes || 0) -
         (devOrg?.total_ignored_changes || 0) >
@@ -157,7 +165,7 @@ const TaskDetail = (props: RouteComponentProps) => {
       hasOrgs = true;
     }
   }
-  const readyToCaptureChanges: boolean = userIsDevOwner && orgHasChanges;
+  const readyToCaptureChanges = userIsDevOwner && orgHasChanges;
   const orgHasBeenVisited = Boolean(userIsDevOwner && devOrg?.has_been_visited);
   const taskCommits = task ? getTaskCommits(task) : [];
   const testOrgOutOfDate = Boolean(
@@ -188,6 +196,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     setSubmitModalOpen(false);
     setEditModalOpen(false);
     setDeleteModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   const closeSubmitReviewModal = () => {
     setSubmitReviewModalOpen(false);
@@ -198,6 +207,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     setSubmitModalOpen(false);
     setEditModalOpen(false);
     setDeleteModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   const closeCaptureModal = () => {
     setCaptureModalOpen(false);
@@ -208,6 +218,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     setCaptureModalOpen(false);
     setEditModalOpen(false);
     setDeleteModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   // edit modal related...
   const openEditModal = () => {
@@ -216,6 +227,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     setSubmitModalOpen(false);
     setCaptureModalOpen(false);
     setDeleteModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   const closeEditModal = () => {
     setEditModalOpen(false);
@@ -227,6 +239,7 @@ const TaskDetail = (props: RouteComponentProps) => {
     setEditModalOpen(false);
     setSubmitModalOpen(false);
     setCaptureModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   const closeDeleteModal = () => {
     setDeleteModalOpen(false);
@@ -240,9 +253,23 @@ const TaskDetail = (props: RouteComponentProps) => {
     setSubmitModalOpen(false);
     setEditModalOpen(false);
     setDeleteModalOpen(false);
+    setCreateOrgModalOpen(false);
   };
   const closeAssignUserModal = () => {
     setAssignUserModalOpen(null);
+  };
+
+  // create playground org modal related...
+  const openCreateOrgModal = () => {
+    setCreateOrgModalOpen(true);
+    setEditModalOpen(false);
+    setSubmitReviewModalOpen(false);
+    setSubmitModalOpen(false);
+    setCaptureModalOpen(false);
+    setDeleteModalOpen(false);
+  };
+  const closeCreateOrgModal = () => {
+    setCreateOrgModalOpen(false);
   };
 
   const doRefetchOrg = useCallback(
@@ -478,10 +505,12 @@ const TaskDetail = (props: RouteComponentProps) => {
   const { branchLink, branchLinkText } = getBranchLink(task);
   const onRenderHeaderActions = () => (
     <PageHeaderControl>
-      <PageOptions
-        modelType={OBJECT_TYPES.TASK}
-        handleOptionSelect={handlePageOptionSelect}
-      />
+      {project.has_push_permission && (
+        <PageOptions
+          modelType={OBJECT_TYPES.TASK}
+          handleOptionSelect={handlePageOptionSelect}
+        />
+      )}
       {branchLink && (
         <ExternalLink
           url={branchLink}
@@ -495,7 +524,7 @@ const TaskDetail = (props: RouteComponentProps) => {
   );
 
   let submitButton: React.ReactNode = null;
-  if (readyToSubmit) {
+  if (readyToSubmit && project.has_push_permission) {
     const isPrimary = !readyToCaptureChanges;
     const submitButtonText = currentlySubmitting ? (
       <LabelWithSpinner
@@ -517,7 +546,10 @@ const TaskDetail = (props: RouteComponentProps) => {
   }
 
   let captureButton: React.ReactNode = null;
-  if (readyToCaptureChanges || orgHasBeenVisited) {
+  if (
+    project.has_push_permission &&
+    (readyToCaptureChanges || orgHasBeenVisited)
+  ) {
     let captureButtonText: JSX.Element = i18n.t(
       'Check for Unretrieved Changes',
     );
@@ -617,6 +649,8 @@ const TaskDetail = (props: RouteComponentProps) => {
                   task={task}
                   orgs={taskOrgs}
                   user={user}
+                  projectId={project.id}
+                  hasPermissions={project.has_push_permission}
                   isCreatingOrg={isCreatingOrg}
                   handleAction={handleStepAction}
                 />
@@ -632,13 +666,17 @@ const TaskDetail = (props: RouteComponentProps) => {
           <TaskOrgCards
             orgs={taskOrgs}
             task={task}
-            epicUsers={epic.github_users}
+            projectId={project.id}
+            userHasPermissions={project.has_push_permission}
+            epicUsers={epicCollaborators}
+            githubUsers={project.github_users}
             epicCreatingBranch={epic.currently_creating_branch}
             epicUrl={epicUrl}
             repoUrl={project.repo_url}
             openCaptureModal={openCaptureModal}
             assignUserModalOpen={assignUserModalOpen}
             isCreatingOrg={isCreatingOrg}
+            isRefreshingUsers={Boolean(project.currently_refreshing_gh_users)}
             openAssignUserModal={openAssignUserModal}
             closeAssignUserModal={closeAssignUserModal}
             openSubmitReviewModal={openSubmitReviewModal}
@@ -650,52 +688,105 @@ const TaskDetail = (props: RouteComponentProps) => {
         ) : (
           <SpinnerWrapper />
         )}
-        {devOrg &&
-          userIsDevOwner &&
-          (orgHasChanges || devOrg.has_ignored_changes) && (
-            <CaptureModal
-              org={devOrg}
-              isOpen={captureModalOpen}
-              closeModal={closeCaptureModal}
+        <div className="slds-m-vertical_large">
+          <h2 className="slds-text-heading_medium slds-p-bottom_medium">
+            {i18n.t('My Task Scratch Org')}
+          </h2>
+          {taskOrgs ? (
+            <>
+              {playgroundOrg ? (
+                <div
+                  className="slds-grid
+                    slds-wrap
+                    slds-grid_pull-padded-x-small"
+                >
+                  <div
+                    className="slds-size_1-of-1
+                      slds-large-size_1-of-2
+                      slds-p-around_x-small"
+                  >
+                    <PlaygroundOrgCard
+                      org={playgroundOrg}
+                      task={task}
+                      repoUrl={project.repo_url}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  label={i18n.t('Create Scratch Org')}
+                  variant="outline-brand"
+                  onClick={openCreateOrgModal}
+                  disabled={epic.currently_creating_branch}
+                />
+              )}
+            </>
+          ) : (
+            // Fetching scratch orgs from API
+            <Button
+              label={
+                <LabelWithSpinner label={i18n.t('Loading Scratch Orgs…')} />
+              }
+              disabled
             />
           )}
-        {readyToSubmit && (
-          <SubmitModal
-            instanceId={task.id}
-            instanceName={task.name}
-            instanceDiffUrl={task.branch_diff_url}
-            instanceType="task"
-            isOpen={submitModalOpen}
-            toggleModal={setSubmitModalOpen}
-            assignee={task.assigned_qa}
-            originatingUser={user.username}
-          />
+        </div>
+        {project.has_push_permission && (
+          <>
+            {devOrg &&
+              userIsDevOwner &&
+              (orgHasChanges || devOrg.has_ignored_changes) && (
+                <CaptureModal
+                  org={devOrg}
+                  isOpen={captureModalOpen}
+                  closeModal={closeCaptureModal}
+                />
+              )}
+            {readyToSubmit && (
+              <SubmitModal
+                instanceId={task.id}
+                instanceName={task.name}
+                instanceDiffUrl={task.branch_diff_url}
+                instanceType="task"
+                isOpen={submitModalOpen}
+                toggleModal={setSubmitModalOpen}
+                assignee={qaUser}
+                originatingUser={user.github_id}
+              />
+            )}
+            {testOrgReadyForReview && (
+              <SubmitReviewModal
+                orgId={testOrg?.id}
+                url={window.api_urls.task_review(task.id)}
+                reviewStatus={task.review_valid ? task.review_status : null}
+                isOpen={submitReviewModalOpen && !testOrgSubmittingReview}
+                handleClose={closeSubmitReviewModal}
+              />
+            )}
+            <EditModal
+              model={task}
+              modelType={OBJECT_TYPES.TASK}
+              hasOrgs={hasOrgs}
+              projectId={project.id}
+              orgConfigsLoading={project.currently_fetching_org_config_names}
+              orgConfigs={project.org_config_names}
+              isOpen={editModalOpen}
+              handleClose={closeEditModal}
+            />
+            <DeleteModal
+              model={task}
+              modelType={OBJECT_TYPES.TASK}
+              isOpen={deleteModalOpen}
+              redirect={epicUrl}
+              handleClose={closeDeleteModal}
+            />
+          </>
         )}
-        {testOrgReadyForReview && (
-          <SubmitReviewModal
-            orgId={testOrg?.id}
-            url={window.api_urls.task_review(task.id)}
-            reviewStatus={task.review_valid ? task.review_status : null}
-            isOpen={submitReviewModalOpen && !testOrgSubmittingReview}
-            handleClose={closeSubmitReviewModal}
-          />
-        )}
-        <EditModal
-          model={task}
-          modelType={OBJECT_TYPES.TASK}
-          hasOrgs={hasOrgs}
-          projectId={project.id}
-          orgConfigsLoading={project.currently_fetching_org_config_names}
-          orgConfigs={project.org_config_names}
-          isOpen={editModalOpen}
-          handleClose={closeEditModal}
-        />
-        <DeleteModal
-          model={task}
-          modelType={OBJECT_TYPES.TASK}
-          isOpen={deleteModalOpen}
-          redirect={epicUrl}
-          handleClose={closeDeleteModal}
+        <CreateOrgModal
+          project={project}
+          task={task}
+          isOpen={createOrgModalOpen}
+          closeModal={closeCreateOrgModal}
         />
         <CommitList commits={task.commits} />
       </DetailPageLayout>

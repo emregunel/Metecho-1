@@ -1,4 +1,4 @@
-import { fireEvent } from '@testing-library/react';
+import { fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -27,6 +27,16 @@ afterEach(() => {
   refetchOrg.mockClear();
 });
 
+const defaultProject = {
+  id: 'project1',
+  slug: 'project-1',
+  name: 'Project 1',
+  description: 'Project Description',
+  description_rendered: '<p>Project Description</p>',
+  github_users: [],
+  latest_sha: '617a512',
+  org_config_names: [{ key: 'dev' }, { key: 'qa' }],
+};
 const defaultEpic = {
   id: 'epic1',
   slug: 'epic-1',
@@ -46,6 +56,7 @@ const defaultOrg = {
   description_rendered: '<p>This is an org.</p>',
   owner: 'user-id',
   owner_gh_username: 'user-name',
+  owner_gh_id: 'user-gh-id',
   expires_at: '2019-09-16T12:58:53.721Z',
   latest_commit: '617a512',
   latest_commit_url: '/test/commit/url/',
@@ -58,76 +69,165 @@ const defaultOrg = {
   total_ignored_changes: 0,
   has_ignored_changes: false,
   is_created: true,
+  currently_refreshing_changes: false,
 };
 
-describe('<PlaygroundOrgCard/>', () => {
-  const setup = (options) => {
-    const defaults = {
+const setup = (options, type) => {
+  let defaults;
+  if (type === 'project') {
+    defaults = {
+      org: { ...defaultOrg, project: 'project-1' },
+      project: defaultProject,
+      repoUrl: '/my-repo/',
+    };
+  } else {
+    defaults = {
       org: defaultOrg,
       epic: defaultEpic,
       repoUrl: '/my-repo/',
     };
-    const opts = Object.assign({}, defaults, options);
-    const ui = (
-      <MemoryRouter>
-        <PlaygroundOrgCard {...opts} />
-      </MemoryRouter>
-    );
-    return renderWithRedux(ui, {}, storeWithThunk);
-  };
+  }
+  const opts = Object.assign({}, defaults, options);
+  const ui = (
+    <MemoryRouter>
+      <PlaygroundOrgCard {...opts} />
+    </MemoryRouter>
+  );
+  return renderWithRedux(ui, {}, storeWithThunk);
+};
 
-  test('renders org card', () => {
-    const { getByText } = setup({ parentLink: '/foo' });
+describe('<PlaygroundOrgCard/>', () => {
+  describe('project org', () => {
+    test('renders org card', () => {
+      const { getByText } = setup({ parentLink: '/foo' }, 'project');
 
-    expect(getByText('Epic Scratch Org')).toBeVisible();
-    expect(getByText('1 unretrieved change', { exact: false })).toBeVisible();
-    expect(getByText('check again')).toBeVisible();
-    expect(getByText('This is an org.')).toBeVisible();
-    expect(getByText('Epic 1')).toBeVisible();
+      expect(getByText('Project Scratch Org')).toBeVisible();
+      expect(getByText('1 unretrieved change', { exact: false })).toBeVisible();
+      expect(getByText('check again')).toBeVisible();
+      expect(getByText('This is an org.')).toBeVisible();
+      expect(getByText('Project 1')).toBeVisible();
+    });
   });
 
-  describe('out of date', () => {
-    test('renders "Behind Latest"', () => {
-      const org = {
-        ...defaultOrg,
-        latest_commit: 'older',
-      };
-      const { getByText } = setup({ org });
+  describe('epic org', () => {
+    test('renders org card', () => {
+      const { getByText } = setup({ parentLink: '/foo' });
 
-      expect(getByText('Behind Latest', { exact: false })).toBeVisible();
-      expect(getByText('view changes')).toBeVisible();
+      expect(getByText('Epic Scratch Org')).toBeVisible();
+      expect(getByText('1 unretrieved change', { exact: false })).toBeVisible();
+      expect(getByText('check again')).toBeVisible();
+      expect(getByText('This is an org.')).toBeVisible();
+      expect(getByText('Epic 1')).toBeVisible();
     });
 
-    describe('Refresh Org click', () => {
-      test('calls refreshOrg action', async () => {
+    describe('out of date', () => {
+      test('renders "Behind Latest"', () => {
         const org = {
           ...defaultOrg,
           latest_commit: 'older',
         };
         const { getByText } = setup({ org });
 
-        expect.assertions(1);
-        await fireEvent.click(getByText('Refresh Org'));
+        expect(getByText('Behind Latest', { exact: false })).toBeVisible();
+        expect(getByText('view changes')).toBeVisible();
+      });
 
-        expect(refreshOrg).toHaveBeenCalledWith(org);
+      describe('Refresh Org click', () => {
+        test('checks for changes and then refreshes org', async () => {
+          const org = {
+            ...defaultOrg,
+            latest_commit: 'older',
+            unsaved_changes: {},
+            total_unsaved_changes: 0,
+            has_unsaved_changes: false,
+          };
+          const { getByText } = setup({ org });
+          fireEvent.click(getByText('Refresh Org'));
+
+          expect.assertions(2);
+
+          await waitFor(() => expect(refreshOrg).toHaveBeenCalledTimes(1));
+          expect(refreshOrg).toHaveBeenCalledWith(org);
+        });
+
+        describe('org has changes', () => {
+          const org = {
+            ...defaultOrg,
+            latest_commit: 'older',
+          };
+
+          test('opens confirm modal', () => {
+            const { getByText } = setup({ org });
+            fireEvent.click(getByText('Refresh Org'));
+
+            expect(refreshOrg).not.toHaveBeenCalled();
+            expect(
+              getByText('Confirm Refreshing Org With Unretrieved Changes'),
+            ).toBeVisible();
+          });
+
+          describe('<ConfirmDeleteModal />', () => {
+            let result;
+
+            beforeEach(() => {
+              result = setup({ org });
+              fireEvent.click(result.getByText('Refresh Org'));
+            });
+
+            describe('"cancel" click', () => {
+              test('closes modal', () => {
+                const { getByTitle, queryByText } = result;
+                fireEvent.click(getByTitle('Cancel'));
+
+                expect(
+                  queryByText(
+                    'Confirm Refreshing Org With Unretrieved Changes',
+                  ),
+                ).toBeNull();
+              });
+            });
+
+            describe('"refresh org" click', () => {
+              test('refreshes org', async () => {
+                const { getAllByText, queryByText } = result;
+                fireEvent.click(getAllByText('Refresh Org')[1]);
+
+                expect.assertions(2);
+
+                await waitFor(() =>
+                  expect(refreshOrg).toHaveBeenCalledTimes(1),
+                );
+                expect(
+                  queryByText(
+                    'Confirm Refreshing Org With Unretrieved Changes',
+                  ),
+                ).toBeNull();
+              });
+            });
+          });
+        });
       });
     });
   });
 
   describe('refetch org click', () => {
-    test('refetches org', async () => {
+    test('refetches org', () => {
       const { getByText } = setup();
-
-      expect.assertions(1);
-      await fireEvent.click(getByText('check again'));
+      fireEvent.click(getByText('check again'));
 
       expect(refetchOrg).toHaveBeenCalledWith(defaultOrg);
     });
   });
 
   describe('delete org click', () => {
-    test('deletes org', async () => {
-      const { findByText, getByText } = setup();
+    test('checks for changes and then deletes org', async () => {
+      const org = {
+        ...defaultOrg,
+        unsaved_changes: {},
+        total_unsaved_changes: 0,
+        has_unsaved_changes: false,
+      };
+      const { getByText, findByText } = setup({ org });
       fireEvent.click(getByText('Org Actions'));
       fireEvent.click(getByText('Delete Org'));
 

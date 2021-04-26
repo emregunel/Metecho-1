@@ -5,6 +5,12 @@ export interface GitHubUser {
   id: string;
   login: string;
   avatar_url: string;
+  name?: string;
+  permissions?: {
+    pull: boolean;
+    push: boolean;
+    admin: boolean;
+  };
 }
 
 export interface User {
@@ -12,6 +18,7 @@ export interface User {
   username: string;
   email: string;
   avatar_url: string | null;
+  github_id: string | null;
   valid_token_for: string | null;
   sf_username: string | null;
   org_name: string | null;
@@ -22,6 +29,7 @@ export interface User {
   devhub_username: string;
   uses_global_devhub: boolean;
   agreed_to_tos_at: string | null;
+  onboarded_at: string | null;
 }
 
 const reducer = (
@@ -33,6 +41,7 @@ const reducer = (
     case 'USER_DISCONNECT_SUCCEEDED':
     case 'DEV_HUB_STATUS_SUCCEEDED':
     case 'AGREE_TO_TERMS_SUCCEEDED':
+    case 'ONBOARDING_SUCCEEDED':
       return action.payload;
     case 'USER_LOGGED_OUT':
       return null;

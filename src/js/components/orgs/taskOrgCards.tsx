@@ -37,12 +37,16 @@ export const ORG_TYPE_TRACKER_DEFAULT = {
 const TaskOrgCards = ({
   orgs,
   task,
+  projectId,
+  userHasPermissions,
   epicUsers,
+  githubUsers,
   epicCreatingBranch,
   epicUrl,
   repoUrl,
   assignUserModalOpen,
   isCreatingOrg,
+  isRefreshingUsers,
   testOrgReadyForReview,
   testOrgSubmittingReview,
   openCaptureModal,
@@ -54,12 +58,16 @@ const TaskOrgCards = ({
 }: {
   orgs: OrgsByParent;
   task: Task;
+  projectId: string;
+  userHasPermissions: boolean;
   epicUsers: GitHubUser[];
+  githubUsers: GitHubUser[];
   epicCreatingBranch: boolean;
   epicUrl: string;
   repoUrl: string;
   assignUserModalOpen: OrgTypes | null;
   isCreatingOrg: OrgTypeTracker;
+  isRefreshingUsers: boolean;
   testOrgReadyForReview: boolean;
   testOrgSubmittingReview: boolean;
   openCaptureModal: () => void;
@@ -141,7 +149,7 @@ const TaskOrgCards = ({
           objectType: OBJECT_TYPES.TASK,
           data: {
             ...task,
-            [userType]: assignee,
+            [userType]: assignee?.id || null,
             [alertType]: shouldAlertAssignee,
           },
         }),
@@ -262,12 +270,16 @@ const TaskOrgCards = ({
           type={ORG_TYPES.DEV}
           user={user}
           task={task}
+          projectId={projectId}
+          userHasPermissions={userHasPermissions}
           epicUsers={epicUsers}
+          githubUsers={githubUsers}
           epicCreatingBranch={epicCreatingBranch}
           epicUrl={epicUrl}
           repoUrl={repoUrl}
           isCreatingOrg={isCreatingOrg[ORG_TYPES.DEV]}
           isDeletingOrg={isDeletingOrg[ORG_TYPES.DEV]}
+          isRefreshingUsers={isRefreshingUsers}
           assignUserModalOpen={assignUserModalOpen}
           openAssignUserModal={openAssignDevModal}
           closeAssignUserModal={closeAssignUserModal}
@@ -282,12 +294,16 @@ const TaskOrgCards = ({
           type={ORG_TYPES.QA}
           user={user}
           task={task}
+          projectId={projectId}
+          userHasPermissions={userHasPermissions}
           epicUsers={epicUsers}
+          githubUsers={githubUsers}
           epicCreatingBranch={epicCreatingBranch}
           epicUrl={epicUrl}
           repoUrl={repoUrl}
           isCreatingOrg={isCreatingOrg[ORG_TYPES.QA]}
           isDeletingOrg={isDeletingOrg[ORG_TYPES.QA]}
+          isRefreshingUsers={isRefreshingUsers}
           assignUserModalOpen={assignUserModalOpen}
           openAssignUserModal={openAssignTesterModal}
           closeAssignUserModal={closeAssignUserModal}
@@ -313,11 +329,11 @@ const TaskOrgCards = ({
         onDisconnect={openConnectModal}
       />
       <ConfirmDeleteModal
-        orgs={orgs}
+        org={devOrg}
         isOpen={confirmDeleteModalOpen}
         handleClose={closeConfirmDeleteModal}
         handleCancel={cancelConfirmDeleteModal}
-        handleDelete={deleteOrg}
+        handleAction={deleteOrg}
       />
       <ConfirmRemoveUserModal
         isOpen={confirmRemoveUserModalOpen}

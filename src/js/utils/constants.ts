@@ -19,8 +19,6 @@ export const OBJECT_TYPES = {
   EPIC_PR: 'epic_pr' as const,
 };
 
-export const SHOW_EPIC_COLLABORATORS = 'show_collaborators';
-
 export const DEFAULT_ORG_CONFIG_NAME = 'dev';
 
 export type OrgTypes = 'Dev' | 'QA' | 'Playground';
@@ -65,3 +63,19 @@ export const EPIC_STATUSES = {
 export const LIST_CHANNEL_ID = 'list';
 
 export type OrgParentType = 'TASK' | 'EPIC' | 'PROJECT';
+
+export type WalkthroughType = 'play' | 'help' | 'plan';
+export const WALKTHROUGH_TYPES = {
+  PLAY: 'play' as const,
+  HELP: 'help' as const,
+  PLAN: 'plan' as const,
+};
+
+export const SHOW_WALKTHROUGH = 'show_walkthrough';
+
+export type ConfirmOrgTracker = 'delete' | 'refresh' | null;
+
+export const CONFIRM_ORG_TRACKER = {
+  DELETE: 'delete' as const,
+  REFRESH: 'refresh' as const,
+};

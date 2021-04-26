@@ -40,6 +40,7 @@ const defaultOrg = {
   org_type: 'Dev',
   owner: 'user-id',
   owner_gh_username: 'user-name',
+  owner_gh_id: 'user-id',
   expires_at: '2019-09-16T12:58:53.721Z',
   latest_commit: '617a51',
   latest_commit_url: '/test/commit/url/',
@@ -64,6 +65,7 @@ const defaultState = {
   user: {
     id: 'user-id',
     username: 'user-name',
+    github_id: 'user-id',
     valid_token_for: 'my-org',
     is_devhub_enabled: true,
   },
@@ -83,8 +85,15 @@ const defaultState = {
           {
             id: 'user-1',
             login: 'user-name',
+            permissions: { push: true },
+          },
+          {
+            id: 'user-id',
+            login: 'user-name',
+            permissions: { push: true },
           },
         ],
+        has_push_permission: true,
       },
     ],
     notFound: ['different-project'],
@@ -103,12 +112,7 @@ const defaultState = {
           branch_url: 'https://github.com/test/test-repo/tree/branch-name',
           branch_name: 'branch-name',
           old_slugs: [],
-          github_users: [
-            {
-              id: 'user-1',
-              login: 'user-name',
-            },
-          ],
+          github_users: ['user-1'],
         },
       ],
       next: null,
@@ -130,9 +134,7 @@ const defaultState = {
         description_rendered: '<p>Task Description</p>',
         has_unmerged_commits: false,
         commits: [],
-        assigned_dev: {
-          login: 'user-name',
-        },
+        assigned_dev: 'user-id',
         assigned_qa: null,
       },
     ],
@@ -186,6 +188,86 @@ describe('<TaskDetail/>', () => {
     expect(queryByText('View Branch')).toBeVisible();
     expect(getByTitle('View Org')).toBeVisible();
     expect(getByText('Task Team & Orgs')).toBeVisible();
+  });
+
+  test('renders readonly task detail with dev org', () => {
+    const { getByText, getByTitle } = setup({
+      initialState: {
+        ...defaultState,
+        projects: {
+          ...defaultState.projects,
+          projects: [
+            {
+              ...defaultState.projects.projects[0],
+              has_push_permission: false,
+            },
+          ],
+        },
+      },
+    });
+
+    expect(getByTitle('Task 1')).toBeVisible();
+    expect(getByTitle('View Org')).toBeVisible();
+    expect(getByText('No Tester')).toBeVisible();
+  });
+
+  test('renders readonly task detail with test org', () => {
+    const { getByText, getByTitle } = setup({
+      initialState: {
+        ...defaultState,
+        projects: {
+          ...defaultState.projects,
+          projects: [
+            {
+              ...defaultState.projects.projects[0],
+              has_push_permission: false,
+            },
+          ],
+        },
+        tasks: {
+          ...defaultState.tasks,
+          epic1: [
+            {
+              ...defaultState.tasks.epic1[0],
+              assigned_dev: null,
+              assigned_qa: 'user-id',
+            },
+          ],
+        },
+        orgs: {
+          ...defaultState.orgs,
+          orgs: {
+            [defaultOrg.id]: {
+              ...defaultOrg,
+              org_type: 'QA',
+            },
+          },
+        },
+      },
+    });
+
+    expect(getByTitle('Task 1')).toBeVisible();
+    expect(getByTitle('View Org')).toBeVisible();
+    expect(getByText('No Developer')).toBeVisible();
+  });
+
+  test('renders task detail with playground scratch org', () => {
+    const { getByText } = setup({
+      initialState: {
+        ...defaultState,
+        orgs: {
+          ...defaultState.orgs,
+          orgs: {
+            [defaultOrg.id]: {
+              ...defaultOrg,
+              org_type: 'Playground',
+            },
+          },
+        },
+      },
+    });
+
+    expect(getByText('Task Scratch Org')).toBeVisible();
   });
 
   test('renders view changes if has_unmerged_commits, branch_diff_url', () => {
@@ -334,7 +416,7 @@ describe('<TaskDetail/>', () => {
       });
 
       test('just opens modal', () => {
-        const { getByText, queryByText } = setup();
+        const { getByText, getByTitle, queryByText } = setup();
         fireEvent.click(getByText('Retrieve Changes from Dev Org'));
 
         expect(refetchOrg).not.toHaveBeenCalled();
@@ -342,7 +424,7 @@ describe('<TaskDetail/>', () => {
           getByText('Select the location to retrieve changes'),
         ).toBeVisible();
 
-        fireEvent.click(getByText('Close'));
+        fireEvent.click(getByTitle('Close'));
 
         expect(
           queryByText('Select the location to retrieve changes'),
@@ -514,30 +596,27 @@ describe('<TaskDetail/>', () => {
   });
 
   describe('edit task click', () => {
-    test('opens and closes modal', async () => {
-      const { getByText, queryByText } = setup();
-
-      expect.assertions(2);
-      await fireEvent.click(getByText('Task Options'));
-      await fireEvent.click(getByText('Edit Task'));
+    test('opens and closes modal', () => {
+      const { getByText, getByTitle, queryByText } = setup();
+      fireEvent.click(getByText('Task Options'));
+      fireEvent.click(getByText('Edit Task'));
 
       expect(getByText('Edit Task')).toBeVisible();
 
-      await fireEvent.click(getByText('Cancel'));
+      fireEvent.click(getByTitle('Cancel'));
 
       expect(queryByText('Edit Task')).toBeNull();
     });
   });
 
-  test('opens/closed deleted modal', async () => {
-    const { getByText, queryByText } = setup();
-    expect.assertions(2);
-    await fireEvent.click(getByText('Task Options'));
-    await fireEvent.click(getByText('Delete Task'));
+  test('opens/closed deleted modal', () => {
+    const { getByText, getByTitle, queryByText } = setup();
+    fireEvent.click(getByText('Task Options'));
+    fireEvent.click(getByText('Delete Task'));
 
     expect(getByText('Confirm Deleting Task')).toBeVisible();
 
-    await fireEvent.click(getByText('Cancel'));
+    fireEvent.click(getByTitle('Cancel'));
 
     expect(queryByText('Confirm Deleting Task')).toBeNull();
   });
@@ -549,7 +628,7 @@ describe('<TaskDetail/>', () => {
         {
           ...defaultState.tasks.epic1[0],
           pr_is_open: true,
-          assigned_qa: { id: 'user-id', login: 'user-name' },
+          assigned_qa: 'user-id',
           commits: [],
           origin_sha: 'parent',
           review_submitted_at: '2019-10-16T12:58:53.721Z',
@@ -569,27 +648,25 @@ describe('<TaskDetail/>', () => {
       },
     };
 
-    test('opens submit review modal', async () => {
-      const { getByText, queryByText } = setup({
+    test('opens submit review modal', () => {
+      const { getByText, getByTitle, queryByText } = setup({
         initialState: {
           ...defaultState,
           tasks,
           orgs,
         },
       });
-
-      expect.assertions(2);
-      await fireEvent.click(getByText('Submit Review'));
+      fireEvent.click(getByText('Submit Review'));
 
       expect(getByText('Submit Task Review')).toBeVisible();
 
-      await fireEvent.click(getByText('Cancel'));
+      fireEvent.click(getByTitle('Cancel'));
 
       expect(queryByText('Submit Task Review')).toBeNull();
     });
 
     describe('form submit', () => {
-      test('submits task review', async () => {
+      test('submits task review', () => {
         const { getByText, baseElement } = setup({
           initialState: {
             ...defaultState,
@@ -597,11 +674,9 @@ describe('<TaskDetail/>', () => {
             orgs,
           },
         });
-
-        expect.assertions(2);
-        await fireEvent.click(getByText('Submit Review'));
+        fireEvent.click(getByText('Submit Review'));
         const submit = baseElement.querySelector('.slds-button[type="submit"]');
-        await fireEvent.click(submit);
+        fireEvent.click(submit);
 
         expect(createObject).toHaveBeenCalledTimes(1);
         expect(createObject).toHaveBeenCalledWith({
@@ -617,7 +692,7 @@ describe('<TaskDetail/>', () => {
         });
       });
 
-      test('submits task review without org', async () => {
+      test('submits task review without org', () => {
         const { getByText, baseElement } = setup({
           initialState: {
             ...defaultState,
@@ -627,7 +702,7 @@ describe('<TaskDetail/>', () => {
                 {
                   ...defaultState.tasks.epic1[0],
                   pr_is_open: true,
-                  assigned_qa: { id: 'user-id', login: 'user-name' },
+                  assigned_qa: 'user-id',
                   commits: [],
                   origin_sha: 'parent',
                   review_submitted_at: '2019-10-16T12:58:53.721Z',
@@ -642,13 +717,11 @@ describe('<TaskDetail/>', () => {
             },
           },
         });
-
-        expect.assertions(2);
-        await fireEvent.click(getByText('Update Review'));
+        fireEvent.click(getByText('Update Review'));
         const submit = baseElement.querySelector(
           '.slds-modal__footer .slds-button[type="submit"]',
         );
-        await fireEvent.click(submit);
+        fireEvent.click(submit);
 
         expect(createObject).toHaveBeenCalledTimes(1);
         expect(createObject).toHaveBeenCalledWith({
@@ -685,6 +758,7 @@ describe('<TaskDetail/>', () => {
       org_type: 'Dev',
       owner: 'user-id',
       owner_gh_username: 'user-name',
+      owner_gh_id: 'user-id',
       url: '/foo/',
       is_created: true,
       has_unsaved_changes: false,
@@ -696,6 +770,7 @@ describe('<TaskDetail/>', () => {
       org_type: 'QA',
       owner: 'user-id',
       owner_gh_username: 'user-name',
+      owner_gh_id: 'user-id',
       url: '/bar/',
       is_created: true,
       has_been_visited: false,
@@ -707,9 +782,10 @@ describe('<TaskDetail/>', () => {
     const jonny = {
       id: 'user-id',
       login: 'user-name',
+      permissions: { push: true },
     };
     const taskWithDev = {
-      assigned_dev: jonny,
+      assigned_dev: jonny.id,
       status: TASK_STATUSES.IN_PROGRESS,
     };
     const taskWithChanges = {
@@ -725,7 +801,7 @@ describe('<TaskDetail/>', () => {
     };
     const taskWithTester = {
       ...taskWithPR,
-      assigned_qa: jonny,
+      assigned_qa: jonny.id,
     };
 
     test.each([
@@ -856,14 +932,60 @@ describe('<TaskDetail/>', () => {
 
   describe('assign user click', () => {
     test('opens/closed modal', () => {
-      const { getByText, queryByText } = setup();
+      const { getByText, getByTitle, queryByText } = setup();
       fireEvent.click(getByText('Assign'));
 
       expect(getByText('Assign Tester')).toBeVisible();
 
-      fireEvent.click(getByText('Cancel'));
+      fireEvent.click(getByTitle('Cancel'));
 
       expect(queryByText('Assign Tester')).toBeNull();
+    });
+  });
+
+  describe('<CreateOrgModal />', () => {
+    let result;
+
+    beforeEach(() => {
+      result = setup();
+      fireEvent.click(result.getByText('Create Scratch Org'));
+    });
+
+    describe('"cancel" click', () => {
+      test('closes modal', () => {
+        const { getByText, queryByText } = result;
+
+        expect(
+          getByText('You are creating a Scratch Org', { exact: false }),
+        ).toBeVisible();
+
+        fireEvent.click(getByText('Cancel'));
+
+        expect(
+          queryByText('You are creating a Scratch Org', { exact: false }),
+        ).toBeNull();
+      });
+    });
+
+    describe('"Create Org" click', () => {
+      test('creates scratch org', async () => {
+        const { getByText, queryByText } = result;
+
+        expect.assertions(5);
+        fireEvent.click(getByText('Next'));
+
+        expect(getByText('Advanced Options')).toBeVisible();
+
+        fireEvent.click(getByText('Create Org'));
+        await waitForElementToBeRemoved(getByText('Advanced Options'));
+
+        expect(queryByText('Advanced Options')).toBeNull();
+        expect(createObject).toHaveBeenCalled();
+        expect(createObject.mock.calls[0][0].data.task).toEqual('task1');
+        expect(createObject.mock.calls[0][0].data.org_config_name).toEqual(
+          'dev',
+        );
+      });
     });
   });
 });

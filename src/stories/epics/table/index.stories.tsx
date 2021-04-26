@@ -10,7 +10,7 @@ import {
   sampleEpic3,
   sampleEpic4,
   sampleEpic5,
-} from '../fixtures';
+} from '../../fixtures';
 
 export default {
   title: 'Epics/Table/Example',
@@ -42,9 +42,9 @@ EpicTable.args = {
 EpicTable.argTypes = {
   epics: {
     defaultValue: Object.keys(sampleEpics),
+    options: Object.keys(sampleEpics),
     control: {
       type: 'multi-select',
-      options: Object.keys(sampleEpics),
     },
   },
 };

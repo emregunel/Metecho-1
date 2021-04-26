@@ -62,8 +62,7 @@ const CreateOrgModal = ({ project, epic, task, isOpen, closeModal }: Props) => {
   const additionalData: { [key: string]: any } = {
     org_type: ORG_TYPES.PLAYGROUND,
   };
-  // @@@
-  /* istanbul ignore next */
+
   if (task) {
     additionalData.task = task.id;
   } else if (epic) {
@@ -121,7 +120,7 @@ const CreateOrgModal = ({ project, epic, task, isOpen, closeModal }: Props) => {
 
   const pages = [
     {
-      heading: i18n.t('Scratch Org Overview'),
+      heading: i18n.t('Create Scratch Org'),
       contents: <Overview project={project} epic={epic} task={task} />,
       footer: [
         CancelBtn,
@@ -134,7 +133,7 @@ const CreateOrgModal = ({ project, epic, task, isOpen, closeModal }: Props) => {
       ],
     },
     {
-      heading: i18n.t('Scratch Org Details'),
+      heading: i18n.t('Create Scratch Org'),
       contents: (
         <CreateOrgForm
           project={project}

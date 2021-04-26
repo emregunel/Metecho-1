@@ -7,7 +7,7 @@ import i18n from 'i18next';
 import React, { useRef, useState } from 'react';
 import { Trans } from 'react-i18next';
 
-import { GitHubUserAvatar } from '~js/components/user/githubUser';
+import GitHubUserAvatar from '~js/components/githubUsers/avatar';
 import {
   ExternalLink,
   LabelWithSpinner,
@@ -26,7 +26,7 @@ interface Props {
   isOpen: boolean;
   toggleModal: React.Dispatch<React.SetStateAction<boolean>>;
   assignee?: GitHubUser | null;
-  originatingUser?: string;
+  originatingUser?: string | null;
 }
 
 const SubmitModal = ({
@@ -81,7 +81,7 @@ const SubmitModal = ({
   }
 
   const defaultChecked = Boolean(
-    originatingUser && assignee && assignee.login !== originatingUser,
+    originatingUser && assignee && assignee.id !== originatingUser,
   );
 
   const {
@@ -168,6 +168,7 @@ const SubmitModal = ({
       isOpen={isOpen}
       size="medium"
       disableClose={submittingReview}
+      assistiveText={{ closeButton: i18n.t('Cancel') }}
       heading={heading}
       directional
       footer={[

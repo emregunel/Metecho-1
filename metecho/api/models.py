@@ -80,6 +80,11 @@ class User(HashIdMixin, AbstractUser):
     devhub_username = StringField(blank=True, default="")
     allow_devhub_override = models.BooleanField(default=False)
     agreed_to_tos_at = models.DateTimeField(null=True, blank=True)
+    onboarded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Date of the last time the user completed the interactive onboarding",
+    )
 
     def notify(self, subject, body):
         # Right now, the only way we notify is via email. In future, we
@@ -113,7 +118,10 @@ class User(HashIdMixin, AbstractUser):
                 GitHubRepository.objects.bulk_create(
                     [
                         GitHubRepository(
-                            user=self, repo_id=repo.id, repo_url=repo.html_url
+                            user=self,
+                            repo_id=repo.id,
+                            repo_url=repo.html_url,
+                            permissions=repo.permissions,
                         )
                         for repo in repos
                     ]
@@ -137,6 +145,13 @@ class User(HashIdMixin, AbstractUser):
     def _get_org_property(self, key):
         try:
             return self.salesforce_account.extra_data[ORGANIZATION_DETAILS][key]
+        except (AttributeError, KeyError, TypeError):
+            return None
+
+    @property
+    def github_id(self):
+        try:
+            return self.github_account.uid
         except (AttributeError, KeyError, TypeError):
             return None
 
@@ -294,7 +309,13 @@ class Project(
     #   {
     #     "id": str,
     #     "login": str,
+    #     "name": str,
     #     "avatar_url": str,
+    #     "permissions": {
+    #       "push": bool,
+    #       "pull": bool,
+    #       "admin": bool,
+    #     },
     #   }
     github_users = models.JSONField(default=list, blank=True)
     # List of {
@@ -410,6 +431,13 @@ class Project(
         for task in matching_tasks:
             task.add_commits(commits, sender)
 
+    def has_push_permission(self, user):
+        return GitHubRepository.objects.filter(
+            user=user,
+            repo_id=self.repo_id,
+            permissions__push=True,
+        ).exists()
+
 
 class GitHubRepository(HashIdMixin, models.Model):
     user = models.ForeignKey(
@@ -417,6 +445,7 @@ class GitHubRepository(HashIdMixin, models.Model):
     )
     repo_id = models.IntegerField()
     repo_url = models.URLField()
+    permissions = models.JSONField(null=True)
 
     class Meta:
         verbose_name_plural = "GitHub repositories"
@@ -456,13 +485,6 @@ class Epic(
     latest_sha = StringField(blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.PROTECT, related_name="epics")
-
-    # User data is shaped like this:
-    #   {
-    #     "id": str,
-    #     "login": str,
-    #     "avatar_url": str,
-    #   }
     github_users = models.JSONField(default=list, blank=True)
 
     slug_class = EpicSlug
@@ -512,6 +534,9 @@ class Epic(
         pass
 
     # end CreatePrMixin configuration
+
+    def has_push_permission(self, user):
+        return self.project.has_push_permission(user)
 
     def create_gh_branch(self, user):
         from .jobs import create_gh_branch_for_new_epic_job
@@ -631,14 +656,9 @@ class Task(
         choices=TASK_STATUSES, default=TASK_STATUSES.Planned, max_length=16
     )
 
-    # Assignee user data is shaped like this:
-    #   {
-    #     "id": str,
-    #     "login": str,
-    #     "avatar_url": str,
-    #   }
-    assigned_dev = models.JSONField(null=True, blank=True)
-    assigned_qa = models.JSONField(null=True, blank=True)
+    # GitHub IDs of task assignees
+    assigned_dev = models.CharField(max_length=50, null=True, blank=True)
+    assigned_qa = models.CharField(max_length=50, null=True, blank=True)
 
     slug_class = TaskSlug
     tracker = FieldTracker(fields=["name"])
@@ -703,8 +723,7 @@ class Task(
     def try_to_notify_assigned_user(self):
         # This takes the tester (a.k.a. assigned_qa) and sends them an
         # email when a PR has been made.
-        assigned = self.assigned_qa
-        id_ = assigned.get("id") if assigned else None
+        id_ = getattr(self, "assigned_qa", None)
         sa = SocialAccount.objects.filter(provider="github", uid=id_).first()
         user = getattr(sa, "user", None)
         if user:
@@ -728,6 +747,9 @@ class Task(
             user.notify(subject, body)
 
     # end CreatePrMixin configuration
+
+    def has_push_permission(self, user):
+        return self.epic.has_push_permission(user)
 
     def update_review_valid(self):
         review_valid = bool(
@@ -910,6 +932,7 @@ class ScratchOrg(
     expiry_job_id = StringField(blank=True, default="")
     owner_sf_username = StringField(blank=True)
     owner_gh_username = StringField(blank=True)
+    owner_gh_id = StringField(null=True, blank=True)
     has_been_visited = models.BooleanField(default=False)
     valid_target_directories = models.JSONField(
         default=dict, encoder=DjangoJSONEncoder, blank=True

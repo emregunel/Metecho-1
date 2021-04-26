@@ -61,7 +61,7 @@ class TestProject:
             project.queue_refresh_commits(ref="some branch", originating_user_id=None)
             assert refresh_commits_job.delay.called
 
-    def test_save(self, project_factory, git_hub_repository_factory):
+    def test_save__no_branch_name(self, project_factory, git_hub_repository_factory):
         with patch("metecho.api.gh.get_repo_info") as get_repo_info:
             repo_branch = MagicMock()
             repo_branch.latest_sha.return_value = "abcd1234"
@@ -70,12 +70,38 @@ class TestProject:
             get_repo_info.return_value = repo_info
             git_hub_repository_factory(repo_id=123)
             project = project_factory(
-                branch_name="", repo_id=123, github_users=[{}], repo_image_url="/foo"
+                branch_name="",
+                latest_sha="",
+                repo_id=123,
+                github_users=[{}],
+                repo_image_url="/foo",
             )
             project.save()
             assert get_repo_info.called
             project.refresh_from_db()
             assert project.branch_name == "main-branch"
+            assert project.latest_sha == "abcd1234"
+
+    def test_save__no_latest_sha(self, project_factory, git_hub_repository_factory):
+        with patch("metecho.api.gh.get_repo_info") as get_repo_info:
+            repo_branch = MagicMock()
+            repo_branch.latest_sha.return_value = "abcd1234"
+            repo_info = MagicMock(default_branch="main-branch")
+            repo_info.branch.return_value = repo_branch
+            get_repo_info.return_value = repo_info
+            git_hub_repository_factory(repo_id=123)
+            project = project_factory(
+                branch_name="main",
+                latest_sha="",
+                repo_id=123,
+                github_users=[{}],
+                repo_image_url="/foo",
+            )
+            project.save()
+            assert get_repo_info.called
+            project.refresh_from_db()
+            assert project.branch_name == "main"
+            assert project.latest_sha == "abcd1234"
 
     def test_finalize_populate_github_users(self, project_factory):
         with patch("metecho.api.model_mixins.async_to_sync") as async_to_sync:
@@ -426,34 +452,28 @@ class TestTask:
 
 @pytest.mark.django_db
 class TestUser:
-    def test_refresh_repositories(self, user_factory, project_factory):
+    def test_refresh_repositories(self, mocker, user_factory, project_factory):
         user = user_factory()
         project_factory(repo_id=8558)
-        with ExitStack() as stack:
-            gh = stack.enter_context(patch("metecho.api.models.gh"))
-            async_to_sync = stack.enter_context(
-                patch("metecho.api.models.async_to_sync")
-            )
-            gh.get_all_org_repos.return_value = [
-                MagicMock(id=8558, html_url="https://example.com/")
-            ]
-            user.refresh_repositories()
+        gh = mocker.patch("metecho.api.models.gh")
+        async_to_sync = mocker.patch("metecho.api.models.async_to_sync")
+        gh.get_all_org_repos.return_value = [
+            MagicMock(id=8558, html_url="https://example.com/", permissions={})
+        ]
+        user.refresh_repositories()
 
-            assert async_to_sync.called
+        assert async_to_sync.called
 
-    def test_refresh_repositories__error(self, user_factory):
+    def test_refresh_repositories__error(self, mocker, user_factory):
         user = user_factory()
-        with ExitStack() as stack:
-            gh = stack.enter_context(patch("metecho.api.models.gh"))
-            async_to_sync = stack.enter_context(
-                patch("metecho.api.models.async_to_sync")
-            )
-            gh.get_all_org_repos.return_value = [
-                MagicMock(id=1, html_url="https://example.com/")
-            ]
-            user.refresh_repositories()
+        gh = mocker.patch("metecho.api.models.gh")
+        async_to_sync = mocker.patch("metecho.api.models.async_to_sync")
+        gh.get_all_org_repos.return_value = [
+            MagicMock(id=1, html_url="https://example.com/", permissions={})
+        ]
+        user.refresh_repositories()
 
-            assert async_to_sync.called
+        assert async_to_sync.called
 
     def test_org_id(self, user_factory, social_account_factory):
         user = user_factory()
@@ -517,6 +537,14 @@ class TestUser:
 
         user.socialaccount_set.all().delete()
         assert user.salesforce_account is None
+
+    def test_github_id(self, user_factory, social_account_factory):
+        user = user_factory()
+        user.socialaccount_set.all().delete()
+        assert not user.github_id
+
+        social_account_factory(user=user, provider="github", uid="test-uid")
+        assert user.github_id == "test-uid"
 
     def test_avatar_url(self, user_factory, social_account_factory):
         user = user_factory()

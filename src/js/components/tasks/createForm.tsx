@@ -109,6 +109,7 @@ const CreateTaskModal = ({
       size="small"
       disableClose={isSaving || isSavingBatch}
       heading={i18n.t('Add a Task for {{epic_name}}', { epic_name: epic.name })}
+      assistiveText={{ closeButton: i18n.t('Cancel') }}
       onRequestClose={closeModal}
       footer={[
         isShowingTransientMessage && (
@@ -180,7 +181,7 @@ const CreateTaskModal = ({
           onChange={handleInputChange}
         />
         <SelectFlowType
-          orgConfigs={project.org_config_names}
+          orgConfigs={project.org_config_names || []}
           projectId={project.id}
           value={inputs.org_config_name}
           errors={errors.org_config_name}

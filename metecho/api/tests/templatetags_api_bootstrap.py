@@ -19,6 +19,7 @@ def test_serialize(user_factory):
                 "username": "template_tags@example.com",
                 "email": "template_tags@example.com",
                 "avatar_url": None,
+                "github_id": str(user.github_id),
                 "is_staff": False,
                 "valid_token_for": None,
                 "org_name": None,
@@ -29,6 +30,7 @@ def test_serialize(user_factory):
                 "devhub_username": "",
                 "uses_global_devhub": False,
                 "agreed_to_tos_at": None,
+                "onboarded_at": None,
             }
         )
     )

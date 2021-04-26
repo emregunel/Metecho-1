@@ -1,6 +1,6 @@
 import Card from '@salesforce/design-system-react/components/card';
 import i18n from 'i18next';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 
 import Footer from '~js/components/orgs/cards/footer';
@@ -8,6 +8,7 @@ import OrgActions from '~js/components/orgs/cards/orgActions';
 import OrgIcon from '~js/components/orgs/cards/orgIcon';
 import OrgInfo from '~js/components/orgs/cards/orgInfo';
 import OrgSpinner from '~js/components/orgs/cards/orgSpinner';
+import ConfirmDeleteModal from '~js/components/tasks/confirmDeleteModal';
 import { useIsMounted } from '~js/components/utils';
 import { ThunkDispatch } from '~js/store';
 import { deleteObject } from '~js/store/actions';
@@ -16,7 +17,11 @@ import { refetchOrg, refreshOrg } from '~js/store/orgs/actions';
 import { Org } from '~js/store/orgs/reducer';
 import { Project } from '~js/store/projects/reducer';
 import { Task } from '~js/store/tasks/reducer';
-import { OBJECT_TYPES } from '~js/utils/constants';
+import {
+  CONFIRM_ORG_TRACKER,
+  ConfirmOrgTracker,
+  OBJECT_TYPES,
+} from '~js/utils/constants';
 import { getTaskCommits } from '~js/utils/helpers';
 
 interface PlaygroundCardProps {
@@ -38,6 +43,14 @@ const PlaygroundOrgCard = ({
 }: PlaygroundCardProps) => {
   const dispatch = useDispatch<ThunkDispatch>();
   const [isDeletingOrg, setIsDeletingOrg] = useState(false);
+  const [
+    confirmDeleteModalOpen,
+    setConfirmDeleteModalOpen,
+  ] = useState<ConfirmOrgTracker>(null);
+  const [
+    isWaitingToDeleteOrg,
+    setIsWaitingToDeleteOrg,
+  ] = useState<ConfirmOrgTracker>(null);
   const isMounted = useIsMounted();
 
   let heading: string,
@@ -46,8 +59,7 @@ const PlaygroundOrgCard = ({
     parentName: string;
   let missingCommits = -1;
   let orgOutOfDate = false;
-  // @@@
-  /* istanbul ignore next */
+
   if (task) {
     heading = i18n.t('Task Scratch Org');
     const taskCommits = getTaskCommits(task);
@@ -89,12 +101,50 @@ const PlaygroundOrgCard = ({
       }
     });
   }, [dispatch, isMounted, org]);
+
   const doCheckForOrgChanges = useCallback(() => {
     dispatch(refetchOrg(org));
   }, [dispatch, org]);
+
   const doRefreshOrg = useCallback(() => {
     dispatch(refreshOrg(org));
   }, [dispatch, org]);
+
+  const handleDelete = useCallback(() => {
+    doCheckForOrgChanges();
+    setIsWaitingToDeleteOrg(CONFIRM_ORG_TRACKER.DELETE);
+  }, [doCheckForOrgChanges]);
+
+  const handleRefresh = useCallback(() => {
+    doCheckForOrgChanges();
+    setIsWaitingToDeleteOrg(CONFIRM_ORG_TRACKER.REFRESH);
+  }, [doCheckForOrgChanges]);
+
+  const closeConfirmDeleteModal = () => {
+    setConfirmDeleteModalOpen(null);
+  };
+  const cancelConfirmDeleteModal = useCallback(() => {
+    setIsWaitingToDeleteOrg(null);
+    closeConfirmDeleteModal();
+  }, []);
+
+  // When org delete has been triggered, wait until it has been refreshed...
+  useEffect(() => {
+    const readyToDeleteOrg =
+      isWaitingToDeleteOrg && !org.currently_refreshing_changes;
+    const action = isWaitingToDeleteOrg;
+
+    if (readyToDeleteOrg) {
+      setIsWaitingToDeleteOrg(null);
+      if (org.has_unsaved_changes) {
+        setConfirmDeleteModalOpen(action);
+      } else if (action === CONFIRM_ORG_TRACKER.REFRESH) {
+        doRefreshOrg();
+      } else {
+        doDeleteOrg();
+      }
+    }
+  }, [doDeleteOrg, doRefreshOrg, isWaitingToDeleteOrg, org]);
 
   /* istanbul ignore next */
   if (!(project || epic || task)) {
@@ -102,11 +152,7 @@ const PlaygroundOrgCard = ({
   }
 
   return (
-    <div
-      className="slds-size_1-of-1
-        slds-large-size_1-of-2
-        slds-p-around_x-small"
-    >
+    <>
       <Card
         bodyClassName="slds-card__body_inner"
         heading={heading}
@@ -131,8 +177,8 @@ const PlaygroundOrgCard = ({
             isCreating={isCreating}
             isDeleting={isDeleting}
             isRefreshingOrg={isRefreshingOrg}
-            doDeleteOrg={doDeleteOrg}
-            doRefreshOrg={doRefreshOrg}
+            doDeleteOrg={handleDelete}
+            doRefreshOrg={handleRefresh}
           />
         }
         footer={
@@ -168,7 +214,19 @@ const PlaygroundOrgCard = ({
           isRefreshingChanges={isRefreshingChanges}
         />
       </Card>
-    </div>
+      <ConfirmDeleteModal
+        org={org}
+        isOpen={Boolean(confirmDeleteModalOpen)}
+        actionType={confirmDeleteModalOpen}
+        handleClose={closeConfirmDeleteModal}
+        handleCancel={cancelConfirmDeleteModal}
+        handleAction={
+          confirmDeleteModalOpen === CONFIRM_ORG_TRACKER.REFRESH
+            ? doRefreshOrg
+            : doDeleteOrg
+        }
+      />
+    </>
   );
 };
 
