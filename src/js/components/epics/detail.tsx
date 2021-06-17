@@ -67,8 +67,9 @@ const EpicDetail = (props: RouteComponentProps) => {
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [createModalOrgIdOrOpen, setCreateModalOrgIdOrOpen] =
-    useState<boolean | string>(false);
+  const [createModalOrgIdOrOpen, setCreateModalOrgIdOrOpen] = useState<
+    boolean | string
+  >(false);
   const [createOrgModalOpen, setCreateOrgModalOpen] = useState(false);
   const [contributeModalOpen, setContributeModalOpen] = useState(false);
 
@@ -89,10 +90,12 @@ const EpicDetail = (props: RouteComponentProps) => {
   }, []);
 
   // "Confirm remove user from epic" modal related:
-  const [waitingToUpdateUsers, setWaitingToUpdateUsers] =
-    useState<GitHubUser[] | null>(null);
-  const [confirmRemoveUsers, setConfirmRemoveUsers] =
-    useState<GitHubUser[] | null>(null);
+  const [waitingToUpdateUsers, setWaitingToUpdateUsers] = useState<
+    GitHubUser[] | null
+  >(null);
+  const [confirmRemoveUsers, setConfirmRemoveUsers] = useState<
+    GitHubUser[] | null
+  >(null);
   const closeConfirmRemoveUsersModal = useCallback(() => {
     setWaitingToUpdateUsers(null);
     setConfirmRemoveUsers(null);
@@ -316,20 +319,18 @@ const EpicDetail = (props: RouteComponentProps) => {
     setAssignUsersModalOpen(false);
     setCreateOrgModalOpen(false);
   };
-  const closeContributeModal = () => {
+  const closeContributeModal = useCallback(() => {
     setContributeModalOpen(false);
-  };
-  const createAndContribute = () => {
-    setCreateModalOrgIdOrOpen(
-      playgroundOrg?.id || /* istanbul ignore next */ true,
-    );
+  }, []);
+  const createAndContribute = useCallback(({ id }: { id: string }) => {
+    setCreateModalOrgIdOrOpen(id);
     setDeleteModalOpen(false);
     setEditModalOpen(false);
     setSubmitModalOpen(false);
     setAssignUsersModalOpen(false);
     setCreateOrgModalOpen(false);
     setContributeModalOpen(false);
-  };
+  }, []);
 
   // "Next Steps" action handler
   const handleStepAction = useCallback(
@@ -783,6 +784,7 @@ const EpicDetail = (props: RouteComponentProps) => {
             epic={epic}
             isOpen={contributeModalOpen}
             hasPermissions={project.has_push_permission}
+            orgId={playgroundOrg.id}
             closeModal={closeContributeModal}
             doContribute={createAndContribute}
           />
