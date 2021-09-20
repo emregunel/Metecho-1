@@ -7,7 +7,6 @@ import { Task } from '@/js/store/tasks/reducer';
 
 import { withRedux } from '../../decorators';
 import {
-  sampleEpic1,
   sampleGitHubUser1,
   sampleGitHubUser2,
   sampleGitHubUser3,
@@ -53,9 +52,9 @@ const Template = ({ tasks, ...rest }: StoryProps) => (
 export const TasksTable: Story<StoryProps> = Template.bind({});
 TasksTable.args = {
   tasks: Object.keys(sampleTasks),
+  isFetched: true,
   projectId: sampleProject1.id,
   projectSlug: sampleProject1.slug,
-  epicSlug: sampleEpic1.slug,
   epicUsers: [sampleGitHubUser1],
   githubUsers: [sampleGitHubUser1, sampleGitHubUser2, sampleGitHubUser3],
   canAssign: true,

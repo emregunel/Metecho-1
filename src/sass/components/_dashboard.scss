@@ -1,7 +1,7 @@
 // Dashboard
 
 .dashboard-header {
-  background: url('~img/welcome-mat-bg.png');
+  background: url('~@/img/welcome-mat-bg.png');
   min-height: 200px;
 
   .slds-avatar-medium {
@@ -10,6 +10,6 @@
 }
 
 .dashboard-profile {
-  background-color: #fff;
+  background-color: white;
   margin-top: -2rem;
 }

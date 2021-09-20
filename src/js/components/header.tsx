@@ -64,6 +64,7 @@ const Header = () => {
       </div>
     </PageHeaderControl>
   );
+
   return user ? (
     <>
       <Alerts />
@@ -77,9 +78,13 @@ const Header = () => {
           body={
             <Trans i18nKey="tourMetechoName">
               Metecho makes it easier for you to view, test, and contribute to
-              Salesforce Projects without learning GitHub. <b>Pronunciation</b>:
-              “Met” rhymes with “Bet.” “Echo” as in the reflection of sound
-              waves. <b>Definition</b>: “Share or participate in.”
+              Salesforce Projects without learning GitHub.
+              <br />
+              <br />
+              <b>Pronunciation</b>: “Met” rhymes with “Bet.” “Echo” as in the
+              reflection of sound waves.
+              <br />
+              <b>Definition</b>: “Share or participate in.”
             </Trans>
           }
         />
@@ -90,7 +95,9 @@ const Header = () => {
           title={
             <Link
               to={routes.home()}
-              className="slds-text-heading_large slds-text-link_reset"
+              className="slds-text-heading_large
+                slds-text-link_reset
+                walkthrough-metecho-name"
             >
               <span data-logo-bit="start">met</span>
               <span data-logo-bit="end">échō</span>
