@@ -2,8 +2,65 @@
 
 exports[`<DashboardDetail/> renders dashboard 1`] = `
 <div>
-  <div>
-    Hello there!
+  <div
+    class="dashboard-view"
+  >
+    <div
+      class="slds-brand-band slds-brand-band_medium slds-brand-band_user dashboard-header"
+    />
+    <div
+      class="slds-grid dashboard-profile slds-p-around_large slds-m-horizontal_xx-large"
+    >
+      <div
+        class="slds-grid dashboard-stats"
+      >
+        <div
+          class="slds-grid dashboard-stat-item"
+        >
+          svg
+          <span
+            class="dashboard-stat-highlight"
+          >
+            5
+          </span>
+          <span
+            class="dashboard-stat-label"
+          >
+            Completed Epics
+          </span>
+        </div>
+        <div
+          class="slds-grid dashboard-stat-item"
+        >
+          svg
+          <span
+            class="dashboard-stat-highlight"
+          >
+            12
+          </span>
+          <span
+            class="dashboard-stat-label"
+          >
+            Completed Tasks
+          </span>
+        </div>
+        <div
+          class="slds-grid dashboard-stat-item"
+        >
+          svg
+          <span
+            class="dashboard-stat-highlight"
+          >
+            20
+          </span>
+          <span
+            class="dashboard-stat-label"
+          >
+            Epic Collaborations
+          </span>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 `;

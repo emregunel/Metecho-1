@@ -1,7 +1,5 @@
 import React from 'react';
 
-import UserInfo from '@/js/components/user/info';
-
 const Dashboard = () => (
   <div className="dashboard-view">
     <div
@@ -13,7 +11,7 @@ const Dashboard = () => (
     {/* TODO slds-brand-band_user 404 bg image from Salesforce UX package */}
     <div className="slds-grid dashboard-profile slds-p-around_large slds-m-horizontal_xx-large">
       {/* TODO - make this larger and not a button */}
-      <UserInfo />
+      {/* <UserInfo /> */}
       <div className="slds-grid dashboard-stats">
         {/* TODO fake data for now */}
         <div className="slds-grid dashboard-stat-item">
