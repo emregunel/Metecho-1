@@ -81,6 +81,26 @@ class TaskReviewStatus(models.TextChoices):
     CHANGES_REQUESTED = "Changes requested"
 
 
+class TaskActivityType(models.TextChoices):
+    MERGED = "Merged"
+    APPROVED = "Approved"
+    CLOSED = "Closed"
+    TEST_ORG_CREATED = "Test Org created"
+    TEST_ORG_DELETED = "Test Org deleted"
+    DEV_ORG_CREATED = "Dev Org created"
+    DEV_ORG_DELETED = "Dev Org deleted"
+    SUBMITTED_FOR_TESTING = "Submitted for testing"
+    CHANGES_RETRIEVED = "Changes retrieved"
+    CHANGES_REQUESTED = "Changes requested"
+    TESTER_ACCEPTED = "Tester accepted"
+    TESTER_ASSIGNED = "Tester assigned"
+    TESTER_UNASSIGNED = "Tester unassigned"
+    DEV_ACCEPTED = "Developer accepted"
+    DEV_ASSIGNED = "Developer assigned"
+    DEV_UNASSIGNED = "Developer unassigned"
+    CREATED = "Created"
+
+
 class SiteProfile(TranslatableModel):
     site = models.OneToOneField(Site, on_delete=models.CASCADE)
 
@@ -387,6 +407,10 @@ class Project(
 
         super().save(*args, **kwargs)
 
+    @property
+    def repo_url(self) -> str:
+        return f"https://github.com/{self.repo_owner}/{self.repo_name}"
+
     def finalize_get_social_image(self):
         self.save()
         self.notify_changed(originating_user_id=None)
@@ -622,14 +646,14 @@ class Epic(
             group_name=group_name,
         )
 
-    def finalize_pr_closed(self, pr_number, *, originating_user_id):
-        self.pr_number = pr_number
+    def finalize_pr_closed(self, pr, *, originating_user_id):
+        self.pr_number = pr["number"]
         self.pr_is_open = False
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_pr_opened(self, pr_number, *, originating_user_id):
-        self.pr_number = pr_number
+    def finalize_pr_opened(self, pr, *, originating_user_id):
+        self.pr_number = pr["number"]
         self.pr_is_open = True
         self.pr_is_merged = False
         self.save()
@@ -639,8 +663,8 @@ class Epic(
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_status_completed(self, pr_number, *, originating_user_id):
-        self.pr_number = pr_number
+    def finalize_status_completed(self, pr, *, originating_user_id):
+        self.pr_number = pr["number"]
         self.pr_is_merged = True
         self.has_unmerged_commits = False
         self.pr_is_open = False
@@ -745,6 +769,26 @@ class Task(
             return self.epic.project
         return self.project
 
+    @property
+    def branch_url(self) -> Optional[str]:
+        if self.branch_name:
+            return f"{self.root_project.repo_url}/tree/{self.branch_name}"
+        return None
+
+    @property
+    def branch_diff_url(self) -> Optional[str]:
+        base_branch = self.get_base()
+        branch = self.branch_name
+        if base_branch and branch:
+            return f"{self.root_project.repo_url}/compare/{base_branch}...{branch}"
+        return None
+
+    @property
+    def pr_url(self) -> Optional[str]:
+        if self.pr_number:
+            return f"{self.root_project.repo_url}/pull/{self.pr_number}"
+        return None
+
     def save(self, *args, force_epic_save=False, **kwargs):
         is_new = self.pk is None
         ret = super().save(*args, **kwargs)
@@ -823,6 +867,17 @@ class Task(
     def get_head(self):
         return self.branch_name
 
+    def log_activity(self, *, user_id=None, **kwargs):
+        """
+        Transform a local user_id into a GitHub ID before creating an activity related
+        to this task
+        """
+        if user_id:
+            kwargs["collaborator_id"] = getattr(
+                User.objects.filter(id=user_id).first(), "github_id", ""
+            )
+        return self.activities.create(**kwargs)
+
     def try_to_notify_assigned_user(self):
         # This takes the tester (a.k.a. assigned_qa) and sends them an
         # email when a PR has been made.
@@ -885,38 +940,57 @@ class Task(
         self.save()
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_status_completed(self, pr_number, *, originating_user_id):
+    def finalize_status_completed(self, pr, *, originating_user_id):
         self.status = TaskStatus.COMPLETED
         self.has_unmerged_commits = False
-        self.pr_number = pr_number
+        self.pr_number = pr["number"]
         self.pr_is_open = False
         if self.epic:
             self.epic.has_unmerged_commits = True
         # This will save the epic, too:
         self.save(force_epic_save=True)
+        self.log_activity(type=TaskActivityType.MERGED, user_id=originating_user_id)
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_pr_closed(self, pr_number, *, originating_user_id):
+    def finalize_pr_closed(self, pr, *, originating_user_id):
         self.status = TaskStatus.CANCELED
-        self.pr_number = pr_number
+        self.pr_number = pr["number"]
         self.pr_is_open = False
         self.review_valid = False
         self.save()
+        self.log_activity(type=TaskActivityType.CLOSED, user_id=originating_user_id)
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_pr_opened(self, pr_number, *, originating_user_id):
+    def finalize_pr_opened(self, pr, *, originating_user_id):
         self.status = TaskStatus.IN_PROGRESS
-        self.pr_number = pr_number
+        self.pr_number = pr["number"]
         self.pr_is_open = True
         self.pr_is_merged = False
         self.save()
+        self.log_activity(
+            type=TaskActivityType.SUBMITTED_FOR_TESTING,
+            user_id=originating_user_id,
+            link_title=f"PR{pr['number']}",
+            link_url=self.pr_url,
+            description=pr["title"],
+        )
         self.notify_changed(originating_user_id=originating_user_id)
 
-    def finalize_provision(self, *, originating_user_id):
+    def finalize_provision(self, *, scratch_org: "ScratchOrg", originating_user_id):
         if self.status == TaskStatus.PLANNED:
             self.status = TaskStatus.IN_PROGRESS
             self.save()
             self.notify_changed(originating_user_id=originating_user_id)
+
+        type_map = {
+            ScratchOrgType.DEV: TaskActivityType.DEV_ORG_CREATED,
+            ScratchOrgType.QA: TaskActivityType.TEST_ORG_CREATED,
+        }
+        self.log_activity(
+            type=type_map[scratch_org.org_type],
+            user_id=originating_user_id,
+            scratch_org=scratch_org,
+        )
 
     def finalize_commit_changes(self, *, originating_user_id):
         if self.status != TaskStatus.IN_PROGRESS:
@@ -972,6 +1046,13 @@ class Task(
             self.review_sha = sha
             self.update_review_valid()
             self.save()
+            type_map = {
+                TaskReviewStatus.CHANGES_REQUESTED: TaskActivityType.CHANGES_REQUESTED,
+                TaskReviewStatus.APPROVED: TaskActivityType.APPROVED,
+            }
+            self.log_activity(
+                type=type_map[self.review_status], user_id=originating_user_id
+            )
             self.notify_changed(
                 type_="TASK_SUBMIT_REVIEW", originating_user_id=originating_user_id
             )
@@ -1174,7 +1255,9 @@ class ScratchOrg(
                 type_="SCRATCH_ORG_PROVISION", originating_user_id=originating_user_id
             )
             if self.task:
-                self.task.finalize_provision(originating_user_id=originating_user_id)
+                self.task.finalize_provision(
+                    originating_user_id=originating_user_id, scratch_org=self
+                )
         else:
             self.notify_scratch_org_error(
                 error=error,
@@ -1371,6 +1454,33 @@ class ScratchOrg(
                 originating_user_id=originating_user_id,
                 group_name=group_name,
             )
+
+
+class TaskActivity(HashIdMixin, TimestampsMixin):
+    """Keep track of activities like re-assignments, org creations, commits, etc"""
+
+    type = StringField(choices=TaskActivityType.choices)
+    link_title = StringField(blank=True)
+    link_url = models.URLField(blank=True)
+    description = StringField(blank=True)
+
+    task = models.ForeignKey(Task, related_name="activities", on_delete=models.CASCADE)
+    collaborator_id = StringField(blank=True)
+    scratch_org = models.ForeignKey(
+        ScratchOrg,
+        related_name="task_activities",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+
+    class Meta:
+        ordering = ("-created_at",)
+        verbose_name = _("task activity")
+        verbose_name_plural = _("task activities")
+
+    def __str__(self) -> str:
+        return self.get_type_display()
 
 
 @receiver(user_logged_in)

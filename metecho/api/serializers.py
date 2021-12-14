@@ -19,6 +19,7 @@ from .models import (
     ScratchOrgType,
     SiteProfile,
     Task,
+    TaskActivityType,
     TaskReviewStatus,
 )
 from .sf_run_flow import is_org_good
@@ -161,7 +162,7 @@ class ProjectSerializer(HashIdModelSerializer):
     slug = serializers.CharField()
     old_slugs = StringListField(read_only=True)
     description_rendered = MarkdownField(source="description", read_only=True)
-    repo_url = serializers.SerializerMethodField()
+    repo_url = serializers.URLField(read_only=True)
     repo_image_url = serializers.SerializerMethodField()
     has_push_permission = serializers.SerializerMethodField()
     github_users = GitHubUserSerializer(many=True, allow_empty=True, required=False)
@@ -194,10 +195,6 @@ class ProjectSerializer(HashIdModelSerializer):
             "currently_fetching_github_users": {"read_only": True},
             "latest_sha": {"read_only": True},
         }
-
-    @extend_schema_field(OpenApiTypes.URI)
-    def get_repo_url(self, obj) -> Optional[str]:
-        return f"https://github.com/{obj.repo_owner}/{obj.repo_name}"
 
     @extend_schema_field(OpenApiTypes.URI)
     def get_repo_image_url(self, obj) -> Optional[str]:
@@ -427,10 +424,10 @@ class TaskSerializer(HashIdModelSerializer):
         required=False,
         allow_null=True,
     )
-    root_project = serializers.SerializerMethodField()
-    branch_url = serializers.SerializerMethodField()
-    branch_diff_url = serializers.SerializerMethodField()
-    pr_url = serializers.SerializerMethodField()
+    root_project = serializers.CharField(source="root_project.id", read_only=True)
+    branch_url = serializers.URLField(read_only=True)
+    branch_diff_url = serializers.URLField(read_only=True)
+    pr_url = serializers.URLField(read_only=True)
 
     dev_org = serializers.PrimaryKeyRelatedField(
         queryset=ScratchOrg.objects.active(),
@@ -476,12 +473,8 @@ class TaskSerializer(HashIdModelSerializer):
             "has_unmerged_commits": {"read_only": True},
             "currently_creating_branch": {"read_only": True},
             "currently_creating_pr": {"read_only": True},
-            "root_project": {"read_only": True},
-            "branch_url": {"read_only": True},
             "commits": {"read_only": True},
             "origin_sha": {"read_only": True},
-            "branch_diff_url": {"read_only": True},
-            "pr_url": {"read_only": True},
             "review_submitted_at": {"read_only": True},
             "review_valid": {"read_only": True},
             "review_status": {"read_only": True},
@@ -491,43 +484,6 @@ class TaskSerializer(HashIdModelSerializer):
             "assigned_qa": {"read_only": True},
             "currently_submitting_review": {"read_only": True},
         }
-
-    def get_root_project(self, obj) -> str:
-        return str(obj.root_project.pk)
-
-    @extend_schema_field(OpenApiTypes.URI)
-    def get_branch_url(self, obj) -> Optional[str]:
-        project = obj.root_project
-        repo_owner = project.repo_owner
-        repo_name = project.repo_name
-        branch = obj.branch_name
-        if repo_owner and repo_name and branch:
-            return f"https://github.com/{repo_owner}/{repo_name}/tree/{branch}"
-        return None
-
-    @extend_schema_field(OpenApiTypes.URI)
-    def get_branch_diff_url(self, obj) -> Optional[str]:
-        base_branch = obj.get_base()
-        project = obj.root_project
-        repo_owner = project.repo_owner
-        repo_name = project.repo_name
-        branch = obj.branch_name
-        if repo_owner and repo_name and base_branch and branch:
-            return (
-                f"https://github.com/{repo_owner}/{repo_name}/compare/"
-                f"{base_branch}...{branch}"
-            )
-        return None
-
-    @extend_schema_field(OpenApiTypes.URI)
-    def get_pr_url(self, obj) -> Optional[str]:
-        project = obj.root_project
-        repo_owner = project.repo_owner
-        repo_name = project.repo_name
-        pr_number = obj.pr_number
-        if repo_owner and repo_name and pr_number:
-            return f"https://github.com/{repo_owner}/{repo_name}/pull/{pr_number}"
-        return None
 
     def validate(self, data: dict) -> dict:
         project = data.get("project", getattr(self.instance, "project", None))
@@ -550,6 +506,7 @@ class TaskSerializer(HashIdModelSerializer):
             validated_data["assigned_dev"] = user.github_id
 
         task = super().create(validated_data)
+        task.log_activity(type=TaskActivityType.CREATED, collaborator_id=user.github_id)
         task.notify_created(originating_user_id=str(user.id))
 
         if dev_org:
@@ -612,13 +569,35 @@ class TaskAssigneeSerializer(serializers.Serializer):
     def update(self, task, data):
         user = self.context["request"].user
         user_id = str(user.id)
+        activities = []
+
         if "assigned_dev" in data:
             self._handle_reassign("dev", task, data, user, originating_user_id=user_id)
             task.assigned_dev = data["assigned_dev"]
+            activities.append(
+                dict(
+                    type=TaskActivityType.DEV_ASSIGNED
+                    if data["assigned_dev"] is not None
+                    else TaskActivityType.DEV_UNASSIGNED,
+                    collaborator_id=data["assigned_dev"] or "",
+                )
+            )
         if "assigned_qa" in data:
             self._handle_reassign("qa", task, data, user, originating_user_id=user_id)
             task.assigned_qa = data["assigned_qa"]
-        task.finalize_task_update(originating_user_id=user_id)
+            activities.append(
+                dict(
+                    type=TaskActivityType.TESTER_ASSIGNED
+                    if data["assigned_qa"] is not None
+                    else TaskActivityType.TESTER_UNASSIGNED,
+                    collaborator_id=data["assigned_qa"] or "",
+                )
+            )
+
+        task.save()
+        for kwargs in activities:
+            task.log_activity(**kwargs)
+        task.notify_changed(originating_user_id=user_id)
         return task
 
     def _handle_reassign(
@@ -638,7 +617,7 @@ class TaskAssigneeSerializer(serializers.Serializer):
                 epic.notify_changed(originating_user_id=None)
 
             if validated_data.get(f"should_alert_{type_}"):
-                self.try_send_assignment_emails(instance, type_, validated_data, user)
+                self.try_send_assignment_emails(instance, type_, new_assignee, user)
 
             reassigned_org = False
             # We want to consider soft-deleted orgs, too:
@@ -647,9 +626,7 @@ class TaskAssigneeSerializer(serializers.Serializer):
                 *instance.orgs.inactive().filter(org_type=org_type),
             ]
             for org in orgs:
-                new_user = self._valid_reassign(
-                    type_, org, validated_data[f"assigned_{type_}"]
-                )
+                new_user = self._valid_reassign(org, new_assignee)
                 valid_commit = org.latest_commit == (
                     instance.commits[0] if instance.commits else instance.origin_sha
                 )
@@ -674,16 +651,14 @@ class TaskAssigneeSerializer(serializers.Serializer):
                     originating_user_id=originating_user_id, preserve_sf_org=True
                 )
 
-    def _valid_reassign(self, type_, org, new_assignee):
-        new_user = self.get_matching_assigned_user(
-            type_, {f"assigned_{type_}": new_assignee}
-        )
+    def _valid_reassign(self, org, ghid):
+        new_user = self.get_matching_assigned_user(ghid)
         if new_user and org.owner_sf_username == new_user.sf_username:
             return new_user
         return None
 
-    def try_send_assignment_emails(self, instance, type_, validated_data, user):
-        assigned_user = self.get_matching_assigned_user(type_, validated_data)
+    def try_send_assignment_emails(self, instance, type_, ghid, user):
+        assigned_user = self.get_matching_assigned_user(ghid)
         if assigned_user:
             task = instance
             metecho_link = get_user_facing_url(path=task.get_absolute_url())
@@ -700,10 +675,9 @@ class TaskAssigneeSerializer(serializers.Serializer):
             )
             assigned_user.notify(subject, body)
 
-    def get_matching_assigned_user(self, type_, validated_data):
-        id_ = validated_data.get(f"assigned_{type_}")
-        sa = SocialAccount.objects.filter(provider="github", uid=id_).first()
-        return getattr(sa, "user", None)  # Optional[User]
+    def get_matching_assigned_user(self, ghid: int) -> Optional[User]:
+        sa = SocialAccount.objects.filter(provider="github", uid=ghid).first()
+        return getattr(sa, "user", None)
 
 
 class CreatePrSerializer(serializers.Serializer):

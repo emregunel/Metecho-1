@@ -30,7 +30,7 @@ from .gh import (
     normalize_commit,
     try_to_make_branch,
 )
-from .models import TaskReviewStatus
+from .models import TaskActivityType, TaskReviewStatus
 from .push import report_scratch_org_error
 from .sf_org_changes import (
     commit_changes_to_github,
@@ -457,6 +457,14 @@ def commit_changes_from_org(
         scratch_org.task.add_metecho_git_sha(commit.sha)
         scratch_org.task.has_unmerged_commits = True
         scratch_org.task.finalize_task_update(originating_user_id=originating_user_id)
+        scratch_org.task.log_activity(
+            type=TaskActivityType.CHANGES_RETRIEVED,
+            user_id=originating_user_id,
+            link_url=f"{scratch_org.task.root_project.repo_url}/commit/{commit.sha}",
+            link_title=commit.sha[:7],
+            description=commit_message,
+            scratch_org=scratch_org,
+        )
 
         scratch_org.refresh_from_db()
         scratch_org.last_modified_at = now()

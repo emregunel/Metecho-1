@@ -17,6 +17,7 @@ from .models import (
     ScratchOrg,
     SiteProfile,
     Task,
+    TaskActivity,
     TaskSlug,
     User,
 )
@@ -168,6 +169,15 @@ class TaskSlugAdmin(admin.ModelAdmin):
     list_filter = ("is_active",)
     list_select_related = ("parent",)
     search_fields = ("slug",)
+
+
+@admin.register(TaskActivity)
+class TaskActivityAdmin(admin.ModelAdmin):
+    list_display = ("type", "description", "task", "created_at")
+    list_filter = ("type",)
+    list_select_related = ("task",)
+    date_hierarchy = "created_at"
+    autocomplete_fields = ("task", "scratch_org")
 
 
 @admin.register(ScratchOrg)

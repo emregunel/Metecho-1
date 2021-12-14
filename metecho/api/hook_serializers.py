@@ -37,6 +37,7 @@ class PrSerializer(serializers.Serializer):
     head = PrBranchSerializer()
     base = PrBranchSerializer()
     number = serializers.IntegerField()
+    title = serializers.CharField()
     # All other fields are ignored by default.
 
 
@@ -100,13 +101,13 @@ class PrHookSerializer(HookSerializerMixin, serializers.Serializer):
             # In all these, our originating user is None, because this
             # comes from the GitHub hook, and therefore all users on the
             # frontend should pay attention to it.
-            pr_number = self.validated_data["number"]
+            pr = self.validated_data["pull_request"]
             if self._is_opened():
-                instance.finalize_pr_opened(pr_number, originating_user_id=None)
+                instance.finalize_pr_opened(pr, originating_user_id=None)
             elif self._is_merged():
-                instance.finalize_status_completed(pr_number, originating_user_id=None)
+                instance.finalize_status_completed(pr, originating_user_id=None)
             else:
-                instance.finalize_pr_closed(pr_number, originating_user_id=None)
+                instance.finalize_pr_closed(pr, originating_user_id=None)
 
 
 class CommitSerializer(serializers.Serializer):
