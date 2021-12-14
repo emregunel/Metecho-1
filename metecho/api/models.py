@@ -1046,13 +1046,12 @@ class Task(
             self.review_sha = sha
             self.update_review_valid()
             self.save()
-            type_map = {
-                TaskReviewStatus.CHANGES_REQUESTED: TaskActivityType.CHANGES_REQUESTED,
-                TaskReviewStatus.APPROVED: TaskActivityType.APPROVED,
-            }
-            self.log_activity(
-                type=type_map[self.review_status], user_id=originating_user_id
-            )
+            if status:
+                type_map = {
+                    TaskReviewStatus.CHANGES_REQUESTED: TaskActivityType.CHANGES_REQUESTED,
+                    TaskReviewStatus.APPROVED: TaskActivityType.APPROVED,
+                }
+                self.log_activity(type=type_map[status], user_id=originating_user_id)
             self.notify_changed(
                 type_="TASK_SUBMIT_REVIEW", originating_user_id=originating_user_id
             )

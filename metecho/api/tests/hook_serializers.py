@@ -48,16 +48,11 @@ class TestPushHookSerializer:
 
 @pytest.mark.django_db
 class TestPrHookSerializer:
-    def test_process_hook__no_matching_project(self):
+    def test_process_hook__no_matching_project(self, pull_request_payload_factory):
         data = {
             "action": "closed",
             "number": 123,
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -65,17 +60,14 @@ class TestPrHookSerializer:
         with pytest.raises(NotFound):
             serializer.process_hook()
 
-    def test_process_hook__no_matching_task(self, project_factory):
+    def test_process_hook__no_matching_task(
+        self, project_factory, pull_request_payload_factory
+    ):
         project_factory(repo_id=123)
         data = {
             "action": "closed",
             "number": 456,
-            "pull_request": {
-                "merged": True,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -98,20 +90,13 @@ class TestPrHookSerializer:
         ),
     )
     def test_process_hook__mark_matching_tasks_as_completed(
-        self, _task_factory, task_data
+        self, _task_factory, task_data, pull_request_payload_factory
     ):
-        task = _task_factory(
-            **task_data, pr_number=456, status=TaskStatus.IN_PROGRESS
-        )
+        task = _task_factory(**task_data, pr_number=456, status=TaskStatus.IN_PROGRESS)
         data = {
             "action": "closed",
             "number": 456,
-            "pull_request": {
-                "merged": True,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(merged=True),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -121,7 +106,9 @@ class TestPrHookSerializer:
         task.refresh_from_db()
         assert task.status == TaskStatus.COMPLETED
 
-    def test_process_hook__closed_not_merged(self, task_factory):
+    def test_process_hook__closed_not_merged(
+        self, task_factory, pull_request_payload_factory
+    ):
         task = task_factory(
             pr_number=456,
             epic__project__repo_id=123,
@@ -130,12 +117,7 @@ class TestPrHookSerializer:
         data = {
             "action": "closed",
             "number": 456,
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -146,7 +128,7 @@ class TestPrHookSerializer:
         assert task.status == TaskStatus.CANCELED
         assert not task.pr_is_open
 
-    def test_process_hook__reopened(self, task_factory):
+    def test_process_hook__reopened(self, task_factory, pull_request_payload_factory):
         task = task_factory(
             pr_number=456,
             epic__project__repo_id=123,
@@ -155,12 +137,7 @@ class TestPrHookSerializer:
         data = {
             "action": "reopened",
             "number": 456,
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -171,18 +148,15 @@ class TestPrHookSerializer:
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.pr_is_open
 
-    def test_process_hook__close_matching_epics(self, project_factory, epic_factory):
+    def test_process_hook__close_matching_epics(
+        self, project_factory, epic_factory, pull_request_payload_factory
+    ):
         project = project_factory(repo_id=123)
         epic = epic_factory(pr_number=456, project=project, pr_is_open=True)
         data = {
             "action": "closed",
             "number": 456,
-            "pull_request": {
-                "merged": True,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -192,7 +166,9 @@ class TestPrHookSerializer:
         epic.refresh_from_db()
         assert not epic.pr_is_open
 
-    def test_process_hook__epic_closed_not_merged(self, project_factory, epic_factory):
+    def test_process_hook__epic_closed_not_merged(
+        self, project_factory, epic_factory, pull_request_payload_factory
+    ):
         project = project_factory(repo_id=123)
         epic = epic_factory(
             pr_number=456,
@@ -202,12 +178,7 @@ class TestPrHookSerializer:
         data = {
             "action": "closed",
             "number": 456,
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -217,7 +188,9 @@ class TestPrHookSerializer:
         epic.refresh_from_db()
         assert not epic.pr_is_open
 
-    def test_process_hook__epic_reopened(self, project_factory, epic_factory):
+    def test_process_hook__epic_reopened(
+        self, project_factory, epic_factory, pull_request_payload_factory
+    ):
         project = project_factory(repo_id=123)
         epic = epic_factory(
             pr_number=456,
@@ -227,12 +200,7 @@ class TestPrHookSerializer:
         data = {
             "action": "reopened",
             "number": 456,
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
             "repository": {"id": 123},
         }
         serializer = PrHookSerializer(data=data)
@@ -245,16 +213,11 @@ class TestPrHookSerializer:
 
 @pytest.mark.django_db
 class TestPrReviewHookSerializer:
-    def test_no_project(self):
+    def test_no_project(self, pull_request_payload_factory):
         data = {
             "sender": {"login": "login", "avatar_url": "https://example.com"},
             "repository": {"id": 123},
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
         }
         serializer = PrReviewHookSerializer(data=data)
         assert serializer.is_valid(), serializer.errors
@@ -262,17 +225,12 @@ class TestPrReviewHookSerializer:
         with pytest.raises(NotFound):
             serializer.process_hook()
 
-    def test_no_task(self, project_factory):
+    def test_no_task(self, project_factory, pull_request_payload_factory):
         project_factory(repo_id=123)
         data = {
             "sender": {"login": "login", "avatar_url": "https://example.com"},
             "repository": {"id": 123},
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(),
         }
         serializer = PrReviewHookSerializer(data=data)
         assert serializer.is_valid(), serializer.errors
@@ -295,17 +253,12 @@ class TestPrReviewHookSerializer:
             ),
         ),
     )
-    def test_good(self, _factory, task_data):
-        task = _factory(**task_data, pr_number=123)
+    def test_good(self, _factory, task_data, pull_request_payload_factory):
+        task = _factory(**task_data, pr_number=111)
         data = {
             "sender": {"login": "login", "avatar_url": "https://example.com"},
             "repository": {"id": 123},
-            "pull_request": {
-                "merged": False,
-                "head": {"ref": "head-ref", "sha": "head-sha"},
-                "base": {"ref": "base-ref", "sha": "base-sha"},
-                "number": 123,
-            },
+            "pull_request": pull_request_payload_factory(number=111),
         }
         serializer = PrReviewHookSerializer(data=data)
         assert serializer.is_valid(), serializer.errors

@@ -143,14 +143,18 @@ class TestEpic:
 
         assert epic.get_repo_id() == 123
 
-    def test_finalize_status_completed(self, epic_factory):
+    def test_finalize_status_completed(
+        self, epic_factory, pull_request_payload_factory
+    ):
         with ExitStack() as stack:
             epic = epic_factory(has_unmerged_commits=True)
 
             async_to_sync = stack.enter_context(
                 patch("metecho.api.model_mixins.async_to_sync")
             )
-            epic.finalize_status_completed(123, originating_user_id=None)
+            epic.finalize_status_completed(
+                pull_request_payload_factory(number=123), originating_user_id=None
+            )
             epic.refresh_from_db()
             assert epic.pr_number == 123
             assert not epic.has_unmerged_commits
@@ -241,14 +245,18 @@ class TestTask:
 
             assert async_to_sync.called
 
-    def test_finalize_status_completed(self, task_factory):
+    def test_finalize_status_completed(
+        self, task_factory, pull_request_payload_factory
+    ):
         with ExitStack() as stack:
             async_to_sync = stack.enter_context(
                 patch("metecho.api.model_mixins.async_to_sync")
             )
 
             task = task_factory()
-            task.finalize_status_completed(123, originating_user_id=None)
+            task.finalize_status_completed(
+                pull_request_payload_factory(number=123), originating_user_id=None
+            )
 
             task.refresh_from_db()
             assert async_to_sync.called

@@ -125,6 +125,15 @@ class ScratchOrgFactory(factory.django.DjangoModelFactory):
     valid_target_directories = {"source": []}
 
 
+@register
+class PullRequestPayloadFactory(factory.base.DictFactory):
+    number = factory.Sequence(lambda n: n)
+    title = factory.Sequence("Pull Request {}".format)
+    merged = False
+    head = {"ref": "head-ref", "sha": "head-sha"}
+    base = {"ref": "base-ref", "sha": "base-sha"}
+
+
 @pytest.fixture
 def client(user_factory):
     user = user_factory()
