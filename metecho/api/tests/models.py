@@ -12,6 +12,9 @@ from ..models import (
     EpicStatus,
     ScratchOrgType,
     Task,
+    TaskActivity,
+    TaskActivityType,
+    TaskReviewStatus,
     TaskStatus,
     user_logged_in_handler,
 )
@@ -246,22 +249,52 @@ class TestTask:
             assert async_to_sync.called
 
     def test_finalize_status_completed(
-        self, task_factory, pull_request_payload_factory
+        self, mocker, task, pull_request_payload_factory
     ):
-        with ExitStack() as stack:
-            async_to_sync = stack.enter_context(
-                patch("metecho.api.model_mixins.async_to_sync")
-            )
+        async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
 
-            task = task_factory()
-            task.finalize_status_completed(
-                pull_request_payload_factory(number=123), originating_user_id=None
-            )
+        task.finalize_status_completed(
+            pull_request_payload_factory(number=123), originating_user_id=None
+        )
 
-            task.refresh_from_db()
-            assert async_to_sync.called
-            assert task.pr_number == 123
-            assert task.status == TaskStatus.COMPLETED
+        task.refresh_from_db()
+        assert async_to_sync.called
+        assert task.pr_number == 123
+        assert task.status == TaskStatus.COMPLETED
+        assert task.activities.filter(
+            type=TaskActivityType.MERGED, collaborator_id=""
+        ).exists(), task.activities.all()
+
+    def test_finalize_pr_closed(self, mocker, task, pull_request_payload_factory):
+        async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
+
+        task.finalize_pr_closed(
+            pull_request_payload_factory(number=123), originating_user_id=None
+        )
+
+        task.refresh_from_db()
+        assert async_to_sync.called
+        assert task.pr_number == 123
+        assert task.status == TaskStatus.CANCELED
+        assert task.activities.filter(
+            type=TaskActivityType.CLOSED, collaborator_id=""
+        ).exists(), task.activities.all()
+
+    def test_finalize_pr_opened(self, mocker, task, pull_request_payload_factory):
+        async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
+
+        pr = pull_request_payload_factory(number=123, title="A new PR")
+        task.finalize_pr_opened(pr, originating_user_id=None)
+
+        task.refresh_from_db()
+        assert async_to_sync.called
+        assert task.pr_number == 123
+        assert task.status == TaskStatus.IN_PROGRESS
+        assert task.activities.filter(
+            type=TaskActivityType.SUBMITTED_FOR_TESTING,
+            collaborator_id="",
+            description="A new PR",
+        ).exists(), task.activities.all()
 
     def test_finalize_task_update(self, task_factory):
         with ExitStack() as stack:
@@ -320,19 +353,31 @@ class TestTask:
 
             assert submit_review_job.delay.called
 
-    def test_finalize_submit_review(self, task_factory):
+    @pytest.mark.parametrize(
+        "review_status, activity_type",
+        (
+            (TaskReviewStatus.APPROVED, TaskActivityType.APPROVED),
+            (TaskReviewStatus.CHANGES_REQUESTED, TaskActivityType.CHANGES_REQUESTED),
+        ),
+    )
+    def test_finalize_submit_review(
+        self, mocker, task_factory, user_factory, review_status, activity_type
+    ):
         now = datetime(2020, 12, 31, 12, 0)
-        with ExitStack() as stack:
-            async_to_sync = stack.enter_context(
-                patch("metecho.api.model_mixins.async_to_sync")
-            )
+        async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
 
-            task = task_factory(commits=[{"id": "123"}])
-            task.finalize_submit_review(now, sha="123", originating_user_id=None)
+        user = user_factory()
+        task = task_factory(commits=[{"id": "123"}])
+        task.finalize_submit_review(
+            now, sha="123", status=review_status, originating_user_id=user.id
+        )
 
-            assert async_to_sync.called
-            assert task.review_sha == "123"
-            assert task.review_valid
+        assert async_to_sync.called
+        assert task.review_sha == "123"
+        assert task.review_valid
+        assert task.activities.filter(
+            type=activity_type, collaborator_id=user.github_id
+        ).exists(), task.activities.all()
 
     def test_finalize_submit_review__delete_org(
         self, task_factory, scratch_org_factory
@@ -371,6 +416,7 @@ class TestTask:
 
             assert async_to_sync.called
             assert not task.review_valid
+            assert not task.activities.exists()
 
     def test_soft_delete_cascade(self, task_factory, scratch_org_factory):
         task = task_factory()
@@ -950,6 +996,12 @@ class TestGitHubRepository:
     def test_str(self, git_hub_repository_factory):
         gh_repo = git_hub_repository_factory()
         assert str(gh_repo) == "https://github.com/test/repo.git"
+
+
+class TestTaskActivity:
+    def test_str(self):
+        activity = TaskActivity(type=TaskActivityType.APPROVED)
+        assert str(activity) == TaskActivityType.APPROVED.label
 
 
 @pytest.mark.django_db

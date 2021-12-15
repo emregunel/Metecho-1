@@ -12,7 +12,7 @@ from rest_framework import status
 
 from metecho.api.serializers import EpicSerializer, TaskSerializer
 
-from ..models import ScratchOrgType
+from ..models import ScratchOrgType, Task, TaskActivityType
 
 Branch = namedtuple("Branch", ["name"])
 
@@ -879,6 +879,20 @@ class TestTaskViewSet:
 
         assert task_data["assigned_dev"] == client.user.github_id, task_data
 
+    def test_create__log_activity(
+        self, client, git_hub_repository_factory, scratch_org_factory, epic_factory
+    ):
+        repo = git_hub_repository_factory(permissions={"push": True}, user=client.user)
+        epic = epic_factory(project__repo_id=repo.repo_id)
+        data = {"name": "Task 1", "epic": str(epic.id), "org_config_name": "dev"}
+
+        response = client.post(reverse("task-list"), data=data)
+        task = Task.objects.get(id=response.json()["id"])
+
+        assert task.activities.filter(
+            type=TaskActivityType.CREATED, collaborator_id=client.user.github_id
+        ).exists(), task.activities.all()
+
     def test_create_pr(self, client, task_factory):
         with ExitStack() as stack:
             task = task_factory()
@@ -1075,6 +1089,30 @@ class TestTaskViewSet:
         task.refresh_from_db()
         assert task.assigned_dev == "123456"
         assert task.assigned_qa == "123456"
+        assert task.activities.filter(
+            type=TaskActivityType.DEV_ASSIGNED, collaborator_id="123456"
+        ).exists(), task.activities.all()
+        assert task.activities.filter(
+            type=TaskActivityType.TESTER_ASSIGNED, collaborator_id="123456"
+        ).exists(), task.activities.all()
+
+    def test_unassign_activity(self, client, git_hub_repository_factory, task_factory):
+        repo = git_hub_repository_factory(permissions={"push": True}, user=client.user)
+        task = task_factory(
+            epic__project__repo_id=repo.repo_id,
+            epic__project__github_users=[
+                {"id": "123456", "permissions": {"push": True}}
+            ],
+        )
+        data = {"assigned_dev": None, "assigned_qa": None}
+        client.post(reverse("task-assignees", args=[task.id]), data, format="json")
+
+        assert task.activities.filter(
+            type=TaskActivityType.DEV_UNASSIGNED, collaborator_id=""
+        ).exists(), task.activities.all()
+        assert task.activities.filter(
+            type=TaskActivityType.TESTER_UNASSIGNED, collaborator_id=""
+        ).exists(), task.activities.all()
 
 
 @pytest.mark.django_db

@@ -30,7 +30,7 @@ from ..jobs import (
     submit_review,
     user_reassign,
 )
-from ..models import ScratchOrgType
+from ..models import ScratchOrgType, TaskActivityType
 
 Author = namedtuple("Author", ("avatar_url", "login"))
 Commit = namedtuple(
@@ -391,33 +391,69 @@ def test_get_unsaved_changes(scratch_org_factory):
         assert scratch_org.latest_revision_numbers == {"TypeOne": {"NameOne": 10}}
 
 
-def test_create_branches_on_github_then_create_scratch_org():
-    # Not a great test, but not a complicated function.
-    with ExitStack() as stack:
-        stack.enter_context(patch(f"{PATCH_ROOT}.local_github_checkout"))
-        _create_branches_on_github = stack.enter_context(
-            patch(f"{PATCH_ROOT}._create_branches_on_github")
-        )
-        _create_branches_on_github.return_value = "this_branch"
-        _create_org_and_run_flow = stack.enter_context(
-            patch(f"{PATCH_ROOT}._create_org_and_run_flow")
-        )
-        stack.enter_context(patch(f"{PATCH_ROOT}.get_scheduler"))
-        get_repo_info = stack.enter_context(patch(f"{PATCH_ROOT}.get_repo_info"))
-        latest_sha = MagicMock()
-        latest_sha.return_value = "abcd1234"
-        repository = MagicMock()
-        repository.branch.return_value = MagicMock(latest_sha=latest_sha)
-        get_repo_info.return_value = repository
+@pytest.mark.parametrize(
+    "org_type, activity_type",
+    (
+        (ScratchOrgType.DEV, TaskActivityType.DEV_ORG_CREATED),
+        (ScratchOrgType.QA, TaskActivityType.TEST_ORG_CREATED),
+    ),
+)
+@pytest.mark.django_db
+def test_create_branches_on_github_then_create_scratch_org(
+    mocker, scratch_org_factory, user_factory, org_type, activity_type
+):
+    mocker.patch(f"{PATCH_ROOT}.local_github_checkout")
+    _create_branches_on_github = mocker.patch(
+        f"{PATCH_ROOT}._create_branches_on_github"
+    )
+    _create_branches_on_github.return_value = "this_branch"
+    _create_org_and_run_flow = mocker.patch(f"{PATCH_ROOT}._create_org_and_run_flow")
+    mocker.patch(f"{PATCH_ROOT}.get_scheduler")
+    get_repo_info = mocker.patch(f"{PATCH_ROOT}.get_repo_info")
+    latest_sha = MagicMock()
+    latest_sha.return_value = "abcd1234"
+    repository = MagicMock()
+    repository.branch.return_value = MagicMock(latest_sha=latest_sha)
+    get_repo_info.return_value = repository
 
-        org = MagicMock(task=None, epic=MagicMock())
-        org.parent = MagicMock(branch_name="", latest_sha="")
-        create_branches_on_github_then_create_scratch_org(
-            scratch_org=org, originating_user_id=None
-        )
+    user = user_factory()
+    org = scratch_org_factory(org_type=org_type, task__epic__project__repo_id=1)
 
-        assert _create_branches_on_github.called
-        assert _create_org_and_run_flow.called
+    create_branches_on_github_then_create_scratch_org(
+        scratch_org=org, originating_user_id=user.id
+    )
+
+    assert _create_branches_on_github.called
+    assert _create_org_and_run_flow.called
+    assert org.task.activities.filter(
+        type=activity_type, collaborator_id=user.github_id
+    ).exists(), org.task.activities.all()
+
+
+@pytest.mark.django_db
+def test_create_branches_on_github_then_create_scratch_org__no_task(mocker):
+    mocker.patch(f"{PATCH_ROOT}.local_github_checkout")
+    _create_branches_on_github = mocker.patch(
+        f"{PATCH_ROOT}._create_branches_on_github"
+    )
+    _create_branches_on_github.return_value = "this_branch"
+    _create_org_and_run_flow = mocker.patch(f"{PATCH_ROOT}._create_org_and_run_flow")
+    mocker.patch(f"{PATCH_ROOT}.get_scheduler")
+    get_repo_info = mocker.patch(f"{PATCH_ROOT}.get_repo_info")
+    latest_sha = MagicMock()
+    latest_sha.return_value = "abcd1234"
+    repository = MagicMock()
+    repository.branch.return_value = MagicMock(latest_sha=latest_sha)
+    get_repo_info.return_value = repository
+    org = MagicMock(task=None, epic=MagicMock())
+    org.parent = MagicMock(branch_name="", latest_sha="")
+
+    create_branches_on_github_then_create_scratch_org(
+        scratch_org=org, originating_user_id=None
+    )
+
+    assert _create_branches_on_github.called
+    assert _create_org_and_run_flow.called
 
 
 @pytest.mark.django_db
@@ -575,45 +611,49 @@ class TestRefreshGitHubRepositoriesForUser:
 
 
 @pytest.mark.django_db
-def test_commit_changes_from_org(scratch_org_factory, user_factory):
-    scratch_org = scratch_org_factory()
+def test_commit_changes_from_org(mocker, scratch_org_factory, user_factory):
+    scratch_org = scratch_org_factory(task__epic__project__repo_id=1)
     user = user_factory()
-    with ExitStack() as stack:
-        commit_changes_to_github = stack.enter_context(
-            patch(f"{PATCH_ROOT}.commit_changes_to_github")
-        )
-        get_latest_revision_numbers = stack.enter_context(
-            patch(f"{PATCH_ROOT}.get_latest_revision_numbers")
-        )
-        get_latest_revision_numbers.return_value = {
-            "name": {"member": 1, "member2": 1},
-            "name1": {"member": 1, "member2": 1},
-        }
-        get_repo_info = stack.enter_context(patch(f"{PATCH_ROOT}.get_repo_info"))
-        commit = MagicMock(
-            sha="12345",
-            html_url="https://github.com/test/user/foo",
-            commit=MagicMock(author={"date": now()}),
-        )
-        repository = MagicMock()
-        repository.branch.return_value = MagicMock(commit=commit)
-        get_repo_info.return_value = repository
+    commit_changes_to_github = mocker.patch(f"{PATCH_ROOT}.commit_changes_to_github")
+    get_latest_revision_numbers = mocker.patch(
+        f"{PATCH_ROOT}.get_latest_revision_numbers"
+    )
+    get_latest_revision_numbers.return_value = {
+        "name": {"member": 1, "member2": 1},
+        "name1": {"member": 1, "member2": 1},
+    }
+    get_repo_info = mocker.patch(f"{PATCH_ROOT}.get_repo_info")
+    commit = MagicMock(
+        sha="1234" * 10,  # 40 characters
+        html_url="https://github.com/test/user/foo",
+        commit=MagicMock(author={"date": now()}),
+    )
+    repository = MagicMock()
+    repository.branch.return_value = MagicMock(commit=commit)
+    get_repo_info.return_value = repository
 
-        desired_changes = {"name": ["member"]}
-        commit_message = "test message"
-        target_directory = "src"
-        assert scratch_org.latest_revision_numbers == {}
-        commit_changes_from_org(
-            scratch_org=scratch_org,
-            user=user,
-            desired_changes=desired_changes,
-            commit_message=commit_message,
-            target_directory=target_directory,
-            originating_user_id=None,
-        )
+    desired_changes = {"name": ["member"]}
+    commit_message = "test message"
+    target_directory = "src"
+    assert scratch_org.latest_revision_numbers == {}
+    commit_changes_from_org(
+        scratch_org=scratch_org,
+        user=user,
+        desired_changes=desired_changes,
+        commit_message=commit_message,
+        target_directory=target_directory,
+        originating_user_id=user.id,
+    )
 
-        assert commit_changes_to_github.called
-        assert scratch_org.latest_revision_numbers == {"name": {"member": 1}}
+    assert commit_changes_to_github.called
+    assert scratch_org.latest_revision_numbers == {"name": {"member": 1}}
+    assert scratch_org.task.activities.filter(
+        type=TaskActivityType.CHANGES_RETRIEVED,
+        collaborator_id=user.github_id,
+        link_title="1234123",
+        description="test message",
+        scratch_org=scratch_org,
+    ).exists(), scratch_org.task.activities.all()
 
 
 # TODO: this should be bundled with each function, not all error-handling together.
