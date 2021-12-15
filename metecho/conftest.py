@@ -132,6 +132,7 @@ class PullRequestPayloadFactory(factory.base.DictFactory):
     merged = False
     head = {"ref": "head-ref", "sha": "head-sha"}
     base = {"ref": "base-ref", "sha": "base-sha"}
+    user = {"id": 123, "login": "octocat"}
 
 
 @pytest.fixture

@@ -949,7 +949,9 @@ class Task(
             self.epic.has_unmerged_commits = True
         # This will save the epic, too:
         self.save(force_epic_save=True)
-        self.log_activity(type=TaskActivityType.MERGED, user_id=originating_user_id)
+        self.log_activity(
+            type=TaskActivityType.MERGED, collaborator_id=pr["user"]["id"]
+        )
         self.notify_changed(originating_user_id=originating_user_id)
 
     def finalize_pr_closed(self, pr, *, originating_user_id):
@@ -958,7 +960,9 @@ class Task(
         self.pr_is_open = False
         self.review_valid = False
         self.save()
-        self.log_activity(type=TaskActivityType.CLOSED, user_id=originating_user_id)
+        self.log_activity(
+            type=TaskActivityType.CLOSED, collaborator_id=pr["user"]["id"]
+        )
         self.notify_changed(originating_user_id=originating_user_id)
 
     def finalize_pr_opened(self, pr, *, originating_user_id):
@@ -973,6 +977,7 @@ class Task(
             link_title=f"PR{pr['number']}",
             link_url=self.pr_url,
             description=pr["title"],
+            collaborator_id=pr["user"]["id"],
         )
         self.notify_changed(originating_user_id=originating_user_id)
 

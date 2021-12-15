@@ -253,37 +253,37 @@ class TestTask:
     ):
         async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
 
-        task.finalize_status_completed(
-            pull_request_payload_factory(number=123), originating_user_id=None
-        )
+        pr = pull_request_payload_factory(number=123, user={"id": 456})
+        task.finalize_status_completed(pr, originating_user_id=None)
 
         task.refresh_from_db()
         assert async_to_sync.called
         assert task.pr_number == 123
         assert task.status == TaskStatus.COMPLETED
         assert task.activities.filter(
-            type=TaskActivityType.MERGED, collaborator_id=""
+            type=TaskActivityType.MERGED, collaborator_id="456"
         ).exists(), task.activities.all()
 
     def test_finalize_pr_closed(self, mocker, task, pull_request_payload_factory):
         async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
 
-        task.finalize_pr_closed(
-            pull_request_payload_factory(number=123), originating_user_id=None
-        )
+        pr = pull_request_payload_factory(number=123, user={"id": 456})
+        task.finalize_pr_closed(pr, originating_user_id=None)
 
         task.refresh_from_db()
         assert async_to_sync.called
         assert task.pr_number == 123
         assert task.status == TaskStatus.CANCELED
         assert task.activities.filter(
-            type=TaskActivityType.CLOSED, collaborator_id=""
+            type=TaskActivityType.CLOSED, collaborator_id="456"
         ).exists(), task.activities.all()
 
     def test_finalize_pr_opened(self, mocker, task, pull_request_payload_factory):
         async_to_sync = mocker.patch("metecho.api.model_mixins.async_to_sync")
 
-        pr = pull_request_payload_factory(number=123, title="A new PR")
+        pr = pull_request_payload_factory(
+            number=123, title="A new PR", user={"id": 456}
+        )
         task.finalize_pr_opened(pr, originating_user_id=None)
 
         task.refresh_from_db()
@@ -292,7 +292,7 @@ class TestTask:
         assert task.status == TaskStatus.IN_PROGRESS
         assert task.activities.filter(
             type=TaskActivityType.SUBMITTED_FOR_TESTING,
-            collaborator_id="",
+            collaborator_id="456",
             description="A new PR",
         ).exists(), task.activities.all()
 

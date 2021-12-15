@@ -32,12 +32,18 @@ class PrBranchSerializer(serializers.Serializer):
     # All other fields are ignored by default.
 
 
+class UserSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    login = serializers.CharField()
+
+
 class PrSerializer(serializers.Serializer):
     merged = serializers.BooleanField(required=False)
     head = PrBranchSerializer()
     base = PrBranchSerializer()
     number = serializers.IntegerField()
     title = serializers.CharField()
+    user = UserSerializer()
     # All other fields are ignored by default.
 
 
